@@ -14,7 +14,8 @@ export function serializeSave(game, draft, friends) {
     player: {
       x: game.player.x,
       y: game.player.y,
-      direction: game.player.direction
+      direction: game.player.direction,
+      inventory: game.player.inventory || []
     },
     npcs: game.npcs.map(npc => ({
       id: npc.id,
@@ -23,7 +24,17 @@ export function serializeSave(game, draft, friends) {
       vibe: npc.vibe,
       x: npc.x,
       y: npc.y,
-      direction: npc.direction
+      direction: npc.direction,
+      inventory: npc.inventory || []
+    })),
+    companions: (game.companions || []).map(comp => ({
+      id: comp.id,
+      name: comp.name,
+      buddyId: comp.buddyId,
+      recipe: comp.recipe,
+      x: comp.x,
+      y: comp.y,
+      direction: comp.direction
     })),
     friends: [...friends],
     wander: game.wander

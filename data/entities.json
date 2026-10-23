@@ -11,6 +11,10 @@
     "Alex", "Sam", "Riley", "Morgan", "Jamie", "Avery", "Quinn", "Charlie", "Robin", "Sasha",
     "Casey", "Drew", "Ellis", "Frankie", "Harper", "Jules", "Kai", "Lane", "Nico", "Reese"
   ],
+  "companionNames": [
+    "Mochi", "Boba", "Nugget", "Sprout", "Bean", "Peanut", "Waffles", "Ziggy", "Gizmo", "Pipsqueak",
+    "Bubbles", "Twig", "Acorn", "Noodle", "Puff", "Scout", "Cosmo", "Button", "Cricket", "Pixel"
+  ],
   "vibes": [
     "Collects interesting sticks.",
     "Knows every duck by name.",

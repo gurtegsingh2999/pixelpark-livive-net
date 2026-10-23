@@ -2,6 +2,7 @@ import entityData from '../data/entities.json' with { type: 'json' };
 
 export const NPC_NAMES = entityData.npcNames;
 export const PLAYER_NAMES = entityData.playerNames;
+export const COMPANION_NAMES = entityData.companionNames || [];
 export const VIBES = entityData.vibes;
 
 export function pickName(used, source = NPC_NAMES, random = Math.random) {

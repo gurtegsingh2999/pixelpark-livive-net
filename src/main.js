@@ -1,6 +1,7 @@
 import { Game } from './game.js';
 import {
   createRecipe,
+  createCompanionRecipe,
   rerollRecipe,
   avatarDataUrl,
   preloadAvatars,
@@ -19,9 +20,12 @@ import {
   isWalkable,
   findOpenTile
 } from './world.js';
-import { PLAYER_NAMES, pickName, pickVibe } from './names.js';
+import { PLAYER_NAMES, COMPANION_NAMES, pickName, pickVibe } from './names.js';
 import { serializeSave, saveState, loadSave, clearSave } from './storage.js';
 import { DialogueManager } from './dialogue.js';
+import { createStarterInventory } from './inventory.js';
+import { FetchMiniGame } from './games/fetch.js';
+import { TicTacToeMiniGame } from './games/tic-tac-toe.js';
 
 const MAX_NPCS = 40;
 const DEFAULT_CROWD = 10;
@@ -34,6 +38,8 @@ let game = null;
 let draft = null;
 let cardCharacter = null;
 let dialogue = null;
+let fetchGame = null;
+let tttGame = null;
 let friends = new Set();
 let toastTimer = 0;
 let entered = false;
@@ -96,6 +102,74 @@ function renderFriendList() {
   list.append(fragment);
 }
 
+function renderInventory() {
+  const list = $('inventory-list');
+  if (!list) return;
+  list.replaceChildren();
+
+  const inventory = game?.player?.inventory || [];
+  if (!inventory.length) {
+    const empty = document.createElement('p');
+    empty.className = 'friend-empty';
+    empty.textContent = 'Your bag is empty.';
+    list.append(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const item of inventory) {
+    const row = document.createElement('div');
+    row.className = 'friend-row';
+    row.setAttribute('role', 'listitem');
+
+    const icon = document.createElement('span');
+    icon.style.fontSize = '28px';
+    icon.style.lineHeight = '1';
+    icon.style.display = 'flex';
+    icon.style.alignItems = 'center';
+    icon.style.justifyContent = 'center';
+    icon.style.width = '44px';
+    icon.style.height = '44px';
+    icon.textContent = item.icon || '📦';
+    if (item.color) icon.style.textShadow = `0 0 8px ${item.color}`;
+
+    const copy = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = item.name;
+    const desc = document.createElement('small');
+    desc.textContent = item.description;
+    copy.append(name, desc);
+
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'pill';
+
+    if (item.id === 'ball') {
+      action.textContent = 'Throw';
+      action.addEventListener('click', () => {
+        closeInventoryPanel();
+        fetchGame?.throwBall({ color: item.color });
+      });
+    } else if (item.id === 'tic-tac-toe') {
+      action.textContent = tttGame?.isOpen() ? 'Pack up' : 'Unfurl';
+      action.addEventListener('click', () => {
+        closeInventoryPanel();
+        if (tttGame?.isOpen()) {
+          tttGame.packUpBoard();
+        } else {
+          // Find closest friend or default to first friend or nearby npc
+          const friend = friendNpcs()[0] || game.npcs[0];
+          tttGame?.unfurlBoard(friend);
+        }
+      });
+    }
+
+    row.append(icon, copy, action);
+    fragment.append(row);
+  }
+  list.append(fragment);
+}
+
 function updateFriendsUI() {
   if (game) {
     for (const id of [...friends]) {
@@ -127,10 +201,34 @@ function toggleFriendsPanel() {
     return;
   }
   closeCard();
+  closeInventoryPanel();
   panel.hidden = false;
   $('friends-toggle').setAttribute('aria-expanded', 'true');
   updateFriendsUI();
   renderFriendList();
+}
+
+function closeInventoryPanel() {
+  const panel = $('inventory-panel');
+  if (panel) {
+    panel.hidden = true;
+    $('inventory-toggle').setAttribute('aria-expanded', 'false');
+  }
+}
+
+function toggleInventoryPanel() {
+  const panel = $('inventory-panel');
+  if (!panel) return;
+  const opening = panel.hidden;
+  if (!opening) {
+    closeInventoryPanel();
+    return;
+  }
+  closeCard();
+  closeFriendsPanel();
+  panel.hidden = false;
+  $('inventory-toggle').setAttribute('aria-expanded', 'true');
+  renderInventory();
 }
 
 function onFriendshipChanged(npcId, isFriend) {
@@ -147,12 +245,21 @@ function onDialogueEnded() {
   saveNow();
 }
 
+function onPlayGame(type, opponent) {
+  if (type === 'tic-tac-toe') {
+    tttGame?.unfurlBoard(opponent);
+  }
+}
+
 function openDialogue(npc) {
   if (!npc) return;
   closeCard();
   closeFriendsPanel();
+  closeInventoryPanel();
   game.select(npc.id);
-  dialogue.open(npc, friends.has(npc.id));
+  const isFriend = friends.has(npc.id);
+  const hasTTT = Boolean(game?.player?.inventory?.some(i => i.id === 'tic-tac-toe'));
+  dialogue.open(npc, isFriend, { canPlayTicTacToe: isFriend && hasTTT });
 }
 
 function fillSelect(select, entries) {
@@ -233,11 +340,21 @@ function syncCreator() {
 function makeDraft() {
   const worldSeed = makeSeed();
   const world = generateWorld(worldSeed);
+  const playerBuddyId = 'player';
+  const playerCompanion = {
+    id: makeId('comp'),
+    name: randomFrom(COMPANION_NAMES),
+    buddyId: playerBuddyId,
+    recipe: createCompanionRecipe()
+  };
+
   return {
     worldSeed,
     world,
     playerName: randomFrom(PLAYER_NAMES),
     playerRecipe: createRecipe(),
+    playerCompanion,
+    playerInventory: createStarterInventory(),
     npcs: [],
     crowdCount: DEFAULT_CROWD,
     crowdInitialized: false
@@ -246,11 +363,19 @@ function makeDraft() {
 
 function makeNpc() {
   const used = new Set(draft.npcs.map(npc => npc.name));
+  const npcId = makeId('npc');
   return {
-    id: makeId('npc'),
+    id: npcId,
     name: pickName(used),
     recipe: createRecipe(),
-    vibe: pickVibe()
+    vibe: pickVibe(),
+    inventory: createStarterInventory(),
+    companion: {
+      id: makeId('comp'),
+      name: randomFrom(COMPANION_NAMES),
+      buddyId: npcId,
+      recipe: createCompanionRecipe()
+    }
   };
 }
 
@@ -267,6 +392,7 @@ function resizeCrowd(count) {
 function rerollDraftNpc(npc, card) {
   npc.recipe = createRecipe();
   npc.vibe = pickVibe();
+  if (npc.companion) npc.companion.recipe = createCompanionRecipe();
   const image = card.querySelector('img');
   const vibe = card.querySelector('small');
   if (image) image.src = avatarDataUrl(npc.recipe);
@@ -333,6 +459,7 @@ function openWizard({ fresh = false } = {}) {
 
   if (dialogue?.isOpen()) dialogue.close();
   closeFriendsPanel();
+  closeInventoryPanel();
   entered = false;
   game.setInteractive(false);
   game.setPreview(draft.world.grid, draft.worldSeed, draft.world.spawn);
@@ -353,11 +480,18 @@ function closeWizard() {
   document.body.classList.remove('wizard-open');
 }
 
+function handleActionKey(character) {
+  if (tttGame?.isOpen()) {
+    tttGame.handleAction(character);
+  }
+}
+
 function ensureGame() {
   if (!game) {
     dialogue = new DialogueManager({
       onDialogueEnd: onDialogueEnded,
-      onFriendshipChange: onFriendshipChanged
+      onFriendshipChange: onFriendshipChanged,
+      onPlayGame
     });
 
     game = new Game({
@@ -365,8 +499,14 @@ function ensureGame() {
       minimap: $('minimap'),
       onSelect: handleSelect,
       onToast: showToast,
-      onDialogue: openDialogue
+      onDialogue: openDialogue,
+      onActionKey: handleActionKey
     });
+
+    fetchGame = new FetchMiniGame({ game, onToast: showToast });
+    tttGame = new TicTacToeMiniGame({ game, onToast: showToast });
+    game.registerMiniGame(fetchGame);
+    game.registerMiniGame(tttGame);
   }
   return game;
 }
@@ -385,11 +525,19 @@ function updateMeta() {
 
 function makeLiveNpc() {
   const used = new Set(game.npcs.map(npc => npc.name));
+  const npcId = makeId('npc');
   return {
-    id: makeId('npc'),
+    id: npcId,
     name: pickName(used),
     recipe: createRecipe(),
-    vibe: pickVibe()
+    vibe: pickVibe(),
+    inventory: createStarterInventory(),
+    companion: {
+      id: makeId('comp'),
+      name: randomFrom(COMPANION_NAMES),
+      buddyId: npcId,
+      recipe: createCompanionRecipe()
+    }
   };
 }
 
@@ -399,16 +547,28 @@ function handleSelect(character) {
     return;
   }
   closeFriendsPanel();
+  closeInventoryPanel();
   cardCharacter = character;
   game.select(character.isPlayer ? 'player' : character.id);
 
   const isPlayer = character.isPlayer;
+  const isCompanion = character.isCompanion;
   $('npc-avatar').src = avatarDataUrl(character.recipe);
   $('npc-avatar').alt = `${character.name}'s character`;
-  $('npc-name').textContent = isPlayer ? `${character.name} · you` : character.name;
-  $('npc-vibe').textContent = isPlayer ? 'Mayor of the park, apparently.' : (character.vibe || 'A park regular.');
-  $('npc-shuffle').hidden = isPlayer;
-  $('npc-remove').hidden = isPlayer;
+
+  if (isPlayer) {
+    $('npc-name').textContent = `${character.name} · you`;
+    $('npc-vibe').textContent = 'Mayor of the park, apparently.';
+  } else if (isCompanion) {
+    $('npc-name').textContent = `${character.name} · buddy`;
+    $('npc-vibe').textContent = 'A loyal companion exploring the park.';
+  } else {
+    $('npc-name').textContent = character.name;
+    $('npc-vibe').textContent = character.vibe || 'A park regular.';
+  }
+
+  $('npc-shuffle').hidden = isPlayer || isCompanion;
+  $('npc-remove').hidden = isPlayer || isCompanion;
   $('npc-card').hidden = false;
 }
 
@@ -453,6 +613,8 @@ function buildLiveNpcs() {
       name: npc.name,
       recipe: npc.recipe,
       vibe: npc.vibe,
+      inventory: npc.inventory || createStarterInventory(),
+      companion: npc.companion,
       x: spot.x,
       y: spot.y
     };
@@ -465,7 +627,32 @@ async function enterPark() {
   button.textContent = 'Opening the gate…';
 
   const npcs = buildLiveNpcs();
-  await preloadAvatars([draft.playerRecipe, ...npcs.map(npc => npc.recipe)]);
+  const companions = [];
+
+  if (draft.playerCompanion) {
+    companions.push({
+      ...draft.playerCompanion,
+      x: draft.world.spawn.x,
+      y: draft.world.spawn.y
+    });
+  }
+
+  for (const npc of npcs) {
+    if (npc.companion) {
+      companions.push({
+        ...npc.companion,
+        x: npc.x,
+        y: npc.y
+      });
+    }
+  }
+
+  await preloadAvatars([
+    draft.playerRecipe,
+    draft.playerCompanion?.recipe,
+    ...npcs.map(npc => npc.recipe),
+    ...companions.map(c => c.recipe)
+  ]);
 
   const playerName = draft.playerName.trim() || 'You';
   const state = {
@@ -474,8 +661,13 @@ async function enterPark() {
     terrain: encodeTerrain(draft.world.grid),
     playerName,
     playerRecipe: draft.playerRecipe,
-    player: { x: draft.world.spawn.x, y: draft.world.spawn.y },
+    player: {
+      x: draft.world.spawn.x,
+      y: draft.world.spawn.y,
+      inventory: draft.playerInventory || createStarterInventory()
+    },
     npcs,
+    companions,
     friends: [],
     wander: true
   };
@@ -488,7 +680,7 @@ async function enterPark() {
   updateWanderButton();
   updateMeta();
   saveNow();
-  showToast(`Welcome to the park, ${playerName}.`);
+  showToast(`Welcome to the park, ${playerName}. Check your Bag for toys!`);
   button.disabled = false;
   button.textContent = 'Enter the park';
 }
@@ -501,7 +693,8 @@ function applyState(state) {
     recipe: state.playerRecipe,
     x: Number.isFinite(Number(state.player?.x)) ? Math.round(Number(state.player.x)) : 32,
     y: Number.isFinite(Number(state.player?.y)) ? Math.round(Number(state.player.y)) : 32,
-    direction: state.player?.direction ?? 0
+    direction: state.player?.direction ?? 0,
+    inventory: state.player?.inventory || createStarterInventory()
   };
   if (!isWalkable(terrain[rawPlayer.y]?.[rawPlayer.x])) {
     const spot = findOpenTile(terrain, { x: 32, y: 32 });
@@ -518,6 +711,7 @@ function applyState(state) {
         name: npc.name,
         recipe: npc.recipe,
         vibe: npc.vibe || '',
+        inventory: npc.inventory || createStarterInventory(),
         x: hasPosition ? Math.round(Number(npc.x)) : -1,
         y: hasPosition ? Math.round(Number(npc.y)) : -1,
         direction: Number(npc.direction) || 0
@@ -542,12 +736,39 @@ function applyState(state) {
     occupiedPositions.add(key);
   }
 
+  // Companions handling (support legacy saves without companions)
+  let companions = Array.isArray(state.companions) ? state.companions : [];
+  if (!companions.length) {
+    // Generate companions for player and existing npcs
+    companions.push({
+      id: makeId('comp'),
+      name: randomFrom(COMPANION_NAMES),
+      buddyId: 'player',
+      recipe: createCompanionRecipe(),
+      x: rawPlayer.x,
+      y: rawPlayer.y,
+      direction: 0
+    });
+    for (const npc of npcs) {
+      companions.push({
+        id: makeId('comp'),
+        name: randomFrom(COMPANION_NAMES),
+        buddyId: npc.id,
+        recipe: createCompanionRecipe(),
+        x: npc.x,
+        y: npc.y,
+        direction: 0
+      });
+    }
+  }
+
   ensureGame();
   game.setWorld({
     terrain,
     worldSeed: state.worldSeed,
     player: rawPlayer,
     npcs,
+    companions,
     wander: state.wander !== false
   });
   friends = new Set(
@@ -559,6 +780,7 @@ function applyState(state) {
     world: { grid: terrain, spawn: { x: rawPlayer.x, y: rawPlayer.y }, component: [] },
     playerName: rawPlayer.name,
     playerRecipe: rawPlayer.recipe,
+    playerInventory: rawPlayer.inventory,
     npcs,
     crowdCount: npcs.length,
     crowdInitialized: true
@@ -582,10 +804,10 @@ function addNeighbour() {
     return;
   }
   const npc = makeLiveNpc();
-  game.addNpc(npc);
+  game.addNpc(npc, npc.companion);
   updateFriendsUI();
   saveNow();
-  showToast(`${npc.name} moved in.`);
+  showToast(`${npc.name} and their buddy ${npc.companion.name} moved in.`);
 }
 
 function toggleWander() {
@@ -597,7 +819,7 @@ function toggleWander() {
 }
 
 function rerollCardCharacter() {
-  if (!cardCharacter || cardCharacter.isPlayer) return;
+  if (!cardCharacter || cardCharacter.isPlayer || cardCharacter.isCompanion) return;
   const recipe = createRecipe();
   cardCharacter.recipe = recipe;
   cardCharacter.vibe = pickVibe();
@@ -609,7 +831,7 @@ function rerollCardCharacter() {
 }
 
 function removeCardCharacter() {
-  if (!cardCharacter || cardCharacter.isPlayer) return;
+  if (!cardCharacter || cardCharacter.isPlayer || cardCharacter.isCompanion) return;
   const name = cardCharacter.name;
   friends.delete(cardCharacter.id);
   game.removeNpc(cardCharacter.id);
@@ -670,6 +892,9 @@ function bindEvents() {
 
   $('enter-park').addEventListener('click', enterPark);
 
+  $('inventory-toggle')?.addEventListener('click', toggleInventoryPanel);
+  $('inventory-close')?.addEventListener('click', closeInventoryPanel);
+
   $('wander-toggle').addEventListener('click', toggleWander);
   $('friends-toggle').addEventListener('click', toggleFriendsPanel);
   $('friends-close').addEventListener('click', closeFriendsPanel);
@@ -689,6 +914,10 @@ function bindEvents() {
     if (event.key !== 'Escape') return;
     if (dialogue?.isOpen()) {
       dialogue.close();
+      return;
+    }
+    if (!$('inventory-panel').hidden) {
+      closeInventoryPanel();
       return;
     }
     if (!$('friends-panel').hidden) {
@@ -734,5 +963,7 @@ boot();
 // A small handle for tinkering in the console and for automated smoke tests.
 window.playPark = {
   get game() { return game; },
-  get draft() { return draft; }
+  get draft() { return draft; },
+  get fetchGame() { return fetchGame; },
+  get tttGame() { return tttGame; }
 };

@@ -20,6 +20,7 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button id="inventory-toggle" class="pill" type="button" aria-expanded="false" aria-controls="inventory-panel"><span class="label">🎒 Bag</span></button>
         <button id="wander-toggle" class="pill" type="button" aria-pressed="true"><span class="status-dot" aria-hidden="true"></span><span class="label">Wander on</span></button>
         <button id="friends-toggle" class="pill friends-pill" type="button" aria-expanded="false" aria-controls="friends-panel"><span class="friend-heart" aria-hidden="true">♥</span><span class="label">Friends</span><span id="friends-count" class="friend-count">0/0</span></button>
         <button id="add-npc" class="pill" type="button">+ Neighbour</button>
@@ -38,6 +39,15 @@
         <button id="npc-shuffle" class="pill" type="button">New look</button>
         <button id="npc-remove" class="pill danger" type="button">Remove</button>
       </div>
+    </aside>
+
+    <aside id="inventory-panel" class="friends-panel" hidden aria-label="Inventory panel">
+      <div class="panel-heading">
+        <strong>Your Bag</strong>
+        <button id="inventory-close" class="icon-button" type="button" aria-label="Close inventory">×</button>
+      </div>
+      <p class="panel-note">Items in your pocket for playing in the park.</p>
+      <div id="inventory-list" class="friend-list" role="list"></div>
     </aside>
 
     <aside id="friends-panel" class="friends-panel" hidden aria-label="Friend list">

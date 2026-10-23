@@ -1,10 +1,11 @@
 import { avatarDataUrl } from './avatar.js';
 
 export class DialogueManager {
-  constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange } = {}) {
+  constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame } = {}) {
     this.dialogueNpc = null;
     this.onDialogueEnd = onDialogueEnd;
     this.onFriendshipChange = onFriendshipChange;
+    this.onPlayGame = onPlayGame;
     this.container = document.getElementById(containerId);
     this.avatar = document.getElementById('dialogue-avatar');
     this.name = document.getElementById('dialogue-name');
@@ -33,7 +34,7 @@ export class DialogueManager {
     window.requestAnimationFrame(() => this.choices.querySelector('button')?.focus({ preventScroll: true }));
   }
 
-  open(npc, isFriend) {
+  open(npc, isFriend, { canPlayTicTacToe = false } = {}) {
     if (!npc || !this.container) return;
     this.dialogueNpc = npc;
     document.body.classList.add('dialogue-open');
@@ -43,9 +44,21 @@ export class DialogueManager {
     this.name.textContent = npc.name;
 
     if (isFriend) {
-      this.setBeat(`Hi, I'm ${npc.name}. Good to see you again!`, [
-        { label: 'See you', className: 'primary', onClick: () => this.close() }
-      ]);
+      const choices = [];
+      if (canPlayTicTacToe) {
+        choices.push({
+          label: 'Play Tic-Tac-Toe',
+          className: 'primary',
+          onClick: () => {
+            const opponent = this.dialogueNpc;
+            this.close();
+            this.onPlayGame?.('tic-tac-toe', opponent);
+          }
+        });
+      }
+      choices.push({ label: 'See you', className: choices.length ? 'pill quiet' : 'primary', onClick: () => this.close() });
+
+      this.setBeat(`Hi, I'm ${npc.name}. Good to see you again!`, choices);
       return;
     }
 

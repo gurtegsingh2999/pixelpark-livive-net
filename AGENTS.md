@@ -40,6 +40,9 @@ commit `node_modules/`.
 | `src/characters.js` | Pure occupancy/reservation helpers used by collision logic |
 | `src/facing.js` | Four-direction mapping and Voxel Art left/right mirroring |
 | `src/names.js` | Name picker and vibe generator backed by `data/entities.json` |
+| `src/inventory.js` | Starter inventories and item definitions (ball, tic-tac-toe) |
+| `src/games/fetch.js` | Fetch mini-game: ball trajectory and companion fetch AI |
+| `src/games/tic-tac-toe.js` | In-world 3×3 Tic-Tac-Toe board on map tiles with turn-taking |
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
 | `test/` | `node:test` suites for pure logic |

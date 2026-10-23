@@ -1,5 +1,7 @@
-import { createVoxelAvatar } from '../vendor/dicebear-voxel.js';
+import { createVoxelAvatar, createCompanionAvatar } from '../vendor/dicebear-voxel.js';
 import { makeSeed } from './world.js';
+
+export const COMPANION_STYLES = ['clay', 'critters', 'gaze', 'sprouts', 'voxel-bot'];
 
 export const TOP_VARIANTS = [
   'afro', 'animalEars', 'beanie', 'bob', 'bowl', 'braids', 'bunnyEars', 'buns',
@@ -34,15 +36,37 @@ export function createRecipe(seed = makeSeed(), look = {}) {
   };
 }
 
+export function createCompanionRecipe(seed = makeSeed(), style) {
+  const chosenStyle = style || COMPANION_STYLES[Math.floor(Math.random() * COMPANION_STYLES.length)];
+  return {
+    isCompanion: true,
+    style: chosenStyle,
+    seed: String(seed)
+  };
+}
+
 export function cloneRecipe(recipe) {
+  if (recipe.isCompanion) {
+    return createCompanionRecipe(recipe.seed, recipe.style);
+  }
   return createRecipe(recipe.seed, recipe.look);
 }
 
 export function rerollRecipe(recipe) {
+  if (recipe.isCompanion) {
+    return createCompanionRecipe(makeSeed(), recipe.style);
+  }
   return createRecipe(makeSeed(), recipe.look);
 }
 
 export function canonicalRecipe(recipe) {
+  if (recipe.isCompanion) {
+    return JSON.stringify({
+      isCompanion: true,
+      style: recipe.style,
+      seed: recipe.seed
+    });
+  }
   return JSON.stringify({
     seed: recipe.seed,
     look: Object.fromEntries(LOOK_KEYS.map(key => [key, recipe.look?.[key] || RANDOM]))
@@ -50,12 +74,22 @@ export function canonicalRecipe(recipe) {
 }
 
 function recipeOptions(recipe) {
+  if (recipe.isCompanion) {
+    return {
+      seed: recipe.seed || 'companion',
+      size: 320,
+      backgroundColor: [],
+      tags: ['animation'],
+      borderRadius: 0
+    };
+  }
+
   const look = recipe.look || {};
   const options = {
     seed: recipe.seed || 'park',
     size: 320,
     backgroundColor: [],
-    animationProbability: 0,
+    tags: ['animation'],
     borderRadius: 0
   };
 
@@ -96,7 +130,11 @@ const imageCache = new Map();
 export function avatarSvg(recipe) {
   const key = canonicalRecipe(recipe);
   if (!svgCache.has(key)) {
-    svgCache.set(key, createVoxelAvatar(recipeOptions(recipe)));
+    if (recipe.isCompanion) {
+      svgCache.set(key, createCompanionAvatar(recipe.style, recipeOptions(recipe)));
+    } else {
+      svgCache.set(key, createVoxelAvatar(recipeOptions(recipe)));
+    }
   }
   return svgCache.get(key);
 }
@@ -137,7 +175,9 @@ export function loadAvatarImage(recipe) {
 
 export async function preloadAvatars(recipes) {
   const unique = new Map();
-  for (const recipe of recipes) unique.set(canonicalRecipe(recipe), recipe);
+  for (const recipe of recipes) {
+    if (recipe) unique.set(canonicalRecipe(recipe), recipe);
+  }
   const results = await Promise.allSettled([...unique.values()].map(loadAvatarImage));
   return results.filter(result => result.status === 'fulfilled').length;
 }

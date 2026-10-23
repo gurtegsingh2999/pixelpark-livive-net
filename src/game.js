@@ -16,8 +16,11 @@ import { directionForStep, shouldMirror } from './facing.js';
 
 const TILE = 48;
 const CHARACTER_HEIGHT = TILE * 1.72;
+const COMPANION_HEIGHT = TILE * 1.05;
 const PLAYER_STEP = 0.17;
 const NPC_STEP = 0.38;
+const COMPANION_STEP = 0.22;
+
 const MOVE_KEYS = new Map([
   ['w', { dx: 0, dy: -1, dir: 2 }],
   ['arrowup', { dx: 0, dy: -1, dir: 2 }],
@@ -112,7 +115,7 @@ function makeTileTextures() {
 }
 
 export class Game {
-  constructor({ canvas, minimap, onSelect, onToast, onDialogue }) {
+  constructor({ canvas, minimap, onSelect, onToast, onDialogue, onActionKey } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.minimap = minimap;
@@ -120,11 +123,14 @@ export class Game {
     this.onSelect = onSelect || (() => {});
     this.onToast = onToast || (() => {});
     this.onDialogue = onDialogue || (() => {});
+    this.onActionKey = onActionKey || (() => {});
 
     this.terrain = null;
     this.worldSeed = null;
     this.player = null;
     this.npcs = [];
+    this.companions = [];
+    this.miniGames = [];
     this.wander = true;
     this.previewFocus = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
     this.camera = { x: 0, y: 0 };
@@ -154,6 +160,10 @@ export class Game {
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerLeave = this.handlePointerLeave.bind(this);
     this.handleBlur = this.handleBlur.bind(this);
+  }
+
+  registerMiniGame(miniGame) {
+    this.miniGames.push(miniGame);
   }
 
   start() {
@@ -189,6 +199,7 @@ export class Game {
       name: input.name || 'Wanderer',
       recipe: input.recipe,
       vibe: input.vibe || '',
+      inventory: Array.isArray(input.inventory) ? input.inventory : [],
       isPlayer,
       x,
       y,
@@ -205,11 +216,49 @@ export class Game {
     };
   }
 
-  setWorld({ terrain, worldSeed, player, npcs, wander = true }) {
+  makeCompanion(input, buddy) {
+    const x = clamp(Math.round(Number(input.x) ?? buddy.x), 0, WORLD_SIZE - 1);
+    const y = clamp(Math.round(Number(input.y) ?? buddy.y), 0, WORLD_SIZE - 1);
+    return {
+      id: input.id || `comp-${Math.random().toString(36).slice(2, 9)}`,
+      name: input.name || 'Buddy',
+      buddyId: buddy.id,
+      recipe: input.recipe,
+      isCompanion: true,
+      x,
+      y,
+      fromX: x,
+      fromY: y,
+      toX: x,
+      toY: y,
+      moving: false,
+      elapsed: 0,
+      duration: COMPANION_STEP,
+      direction: Number(input.direction) || 0,
+      fetchTarget: null,
+      carryingBall: false,
+      path: []
+    };
+  }
+
+  getCompanionFor(buddyId) {
+    return this.companions.find(comp => comp.buddyId === buddyId) || null;
+  }
+
+  setWorld({ terrain, worldSeed, player, npcs, companions = [], wander = true }) {
     this.terrain = terrain;
     this.worldSeed = worldSeed;
     this.player = player ? this.makeCharacter(player, true) : null;
     this.npcs = (npcs || []).map(npc => this.makeCharacter(npc, false));
+
+    // Initialize companions
+    this.companions = [];
+    const allBuddies = this.player ? [this.player, ...this.npcs] : [...this.npcs];
+    for (const comp of companions) {
+      const buddy = allBuddies.find(b => b.id === comp.buddyId);
+      if (buddy) this.companions.push(this.makeCompanion(comp, buddy));
+    }
+
     this.wander = wander;
     this.selected = null;
     this.hovered = null;
@@ -229,6 +278,7 @@ export class Game {
     this.worldSeed = worldSeed;
     this.player = null;
     this.npcs = [];
+    this.companions = [];
     this.selected = null;
     this.hovered = null;
     this.dialogueNpc = null;
@@ -251,72 +301,63 @@ export class Game {
     this.wander = Boolean(value);
   }
 
-  addNpc(input) {
-    if (!this.terrain) return null;
-    const focus = this.player || this.previewFocus;
-    const occupied = new Set();
-    for (const npc of this.npcs) {
-      occupied.add(`${npc.x},${npc.y}`);
-      if (npc.moving) occupied.add(`${npc.toX},${npc.toY}`);
+  getNpc(id) {
+    return this.npcs.find(npc => npc.id === id) || null;
+  }
+
+  addNpc(raw, companionRaw = null) {
+    if (!this.terrain || !this.player) return null;
+    const occupied = new Set([`${this.player.x},${this.player.y}`]);
+    for (const npc of this.npcs) occupied.add(`${npc.x},${npc.y}`);
+    const spot = findOpenTile(this.terrain, { x: this.player.x, y: this.player.y }, occupied, 2);
+    const npc = this.makeCharacter({ ...raw, x: spot.x, y: spot.y });
+    this.npcs.push(npc);
+
+    if (companionRaw) {
+      const comp = this.makeCompanion(companionRaw, npc);
+      this.companions.push(comp);
     }
-    if (this.player) {
-      occupied.add(`${this.player.x},${this.player.y}`);
-      if (this.player.moving) occupied.add(`${this.player.toX},${this.player.toY}`);
-    }
-    const spot = input?.x != null && input?.y != null
-      ? { x: input.x, y: input.y }
-      : findOpenTile(this.terrain, focus, occupied, 2);
-    const character = this.makeCharacter({ ...input, x: spot.x, y: spot.y }, false);
-    this.npcs.push(character);
-    return character;
+    return npc;
   }
 
   removeNpc(id) {
     this.npcs = this.npcs.filter(npc => npc.id !== id);
+    this.companions = this.companions.filter(comp => comp.buddyId !== id);
     if (this.selected?.id === id) this.selected = null;
     if (this.hovered?.id === id) this.hovered = null;
   }
 
   updateNpcRecipe(id, recipe) {
-    const npc = this.npcs.find(item => item.id === id);
+    const npc = this.getNpc(id);
     if (npc) npc.recipe = recipe;
   }
 
-  getNpc(id) {
-    return this.npcs.find(item => item.id === id) || null;
-  }
-
-  characterById(id) {
-    if (id === 'player') return this.player;
-    return this.getNpc(id);
-  }
-
   select(id) {
-    this.selected = id ? this.characterById(id) : null;
-  }
-
-  npcAtTile(x, y, exclude = null) {
-    return occupantAtTile(this.npcs, x, y, exclude);
-  }
-
-  reservedBy(x, y, exclude = null) {
-    const characters = this.player ? [...this.npcs, this.player] : this.npcs;
-    return reservationAtTile(characters, x, y, exclude);
+    if (!id) {
+      this.selected = null;
+      return;
+    }
+    if (id === 'player') {
+      this.selected = this.player;
+      return;
+    }
+    this.selected = this.getNpc(id) || this.companions.find(c => c.id === id) || null;
   }
 
   tryPlayerStep(dx, dy) {
-    if (!this.terrain || !this.player || this.player.moving) return false;
+    if (!this.player || !this.interactive || this.paused) return false;
     const nx = this.player.x + dx;
     const ny = this.player.y + dy;
-    if (!isWalkable(typeAt(this.terrain, nx, ny))) return false;
+    this.player.direction = directionForStep(dx, dy);
 
-    const npc = this.npcAtTile(nx, ny);
-    if (npc) {
-      this.openDialogueWith(npc);
+    const bumpNpc = occupantAtTile(this.npcs, nx, ny);
+    if (bumpNpc) {
+      this.openDialogueWith(bumpNpc);
       return false;
     }
 
-    if (this.reservedBy(nx, ny, this.player)) {
+    const reservedBy = reservationAtTile(this.npcs, nx, ny);
+    if (reservedBy) {
       this.heldKeys = [];
       this.player.path = [];
       this.destination = null;
@@ -497,11 +538,57 @@ export class Game {
     this.tryStep(npc, move.dx, move.dy, NPC_STEP);
   }
 
+  updateCompanion(comp, dt) {
+    if (comp.moving) {
+      comp.elapsed += dt;
+      if (comp.elapsed >= comp.duration) {
+        comp.x = comp.toX;
+        comp.y = comp.toY;
+        comp.moving = false;
+        comp.elapsed = 0;
+      }
+      return;
+    }
+
+    // Determine target location: either fetchTarget or trailing its buddy
+    let target = comp.fetchTarget;
+    if (!target) {
+      const buddy = (this.player && this.player.id === comp.buddyId)
+        ? this.player
+        : this.npcs.find(n => n.id === comp.buddyId);
+
+      if (!buddy) return;
+
+      const dist = Math.hypot(buddy.x - comp.x, buddy.y - comp.y);
+      // If close enough (within 1 tile), relax
+      if (dist <= 1.5) return;
+
+      target = { x: buddy.x, y: buddy.y };
+    }
+
+    // Path or step toward target
+    const dx = target.x - comp.x;
+    const dy = target.y - comp.y;
+    const stepX = dx === 0 ? 0 : (dx > 0 ? 1 : -1);
+    const stepY = dy === 0 ? 0 : (dy > 0 ? 1 : -1);
+
+    // Try primary axis then secondary
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      if (stepX !== 0 && this.tryStep(comp, stepX, 0, COMPANION_STEP)) return;
+      if (stepY !== 0 && this.tryStep(comp, 0, stepY, COMPANION_STEP)) return;
+    } else {
+      if (stepY !== 0 && this.tryStep(comp, 0, stepY, COMPANION_STEP)) return;
+      if (stepX !== 0 && this.tryStep(comp, stepX, 0, COMPANION_STEP)) return;
+    }
+  }
+
   update(dt) {
     this.time += dt;
     if (!this.paused) {
       this.updatePlayer(dt);
       for (const npc of this.npcs) this.updateNpc(npc, dt);
+      for (const comp of this.companions) this.updateCompanion(comp, dt);
+      for (const game of this.miniGames) game.update?.(dt);
     }
     this.updateCamera(dt);
     if (this.destination && this.time > this.destination.until) this.destination = null;
@@ -544,6 +631,12 @@ export class Game {
       }
     }
 
+    // Render ground-based mini games (e.g. Tic-Tac-Toe board on grass)
+    for (const game of this.miniGames) {
+      if (game.renderGround) game.renderGround(ctx, this.camera);
+      else if (game.render) game.render(ctx, { x: 0, y: 0 }); // camera is already translated in ctx
+    }
+
     if (this.destination) {
       const pulse = 0.5 + Math.sin(this.time * 7) * 0.5;
       const cx = (this.destination.x + 0.5) * TILE;
@@ -562,6 +655,7 @@ export class Game {
     const characters = [];
     if (this.player) characters.push(this.player);
     characters.push(...this.npcs);
+    characters.push(...this.companions);
     characters.sort((a, b) => this.interpolated(a).y - this.interpolated(b).y);
 
     for (const character of characters) {
@@ -577,14 +671,16 @@ export class Game {
 
   drawCharacter(character) {
     const { ctx } = this;
+    const isCompanion = Boolean(character.isCompanion);
+    const height = isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
+    const width = height;
     const position = this.interpolated(character);
     const footX = (position.x + 0.5) * TILE;
     const footY = (position.y + 1) * TILE;
     const movingT = character.moving ? clamp(character.elapsed / character.duration, 0, 1) : 0;
     const idle = Math.sin(this.time * 2.2 + (hashString(character.id) % 100)) * 0.7;
     const lift = character.moving ? Math.sin(movingT * Math.PI) * TILE * 0.09 : idle * 0.3;
-    const width = CHARACTER_HEIGHT;
-    const top = footY - CHARACTER_HEIGHT - lift;
+    const top = footY - height - lift;
 
     if (character === this.player || character === this.selected || character === this.hovered) {
       ctx.beginPath();
@@ -598,12 +694,12 @@ export class Game {
 
     const image = getAvatarImage(character.recipe);
     if (image) {
-      drawAvatar(ctx, image, footX - width / 2, top, width, CHARACTER_HEIGHT, shouldMirror(character.direction));
+      drawAvatar(ctx, image, footX - width / 2, top, width, height, shouldMirror(character.direction));
     } else {
       loadAvatarImage(character.recipe).catch(() => {});
       ctx.fillStyle = 'rgba(20, 30, 22, 0.8)';
       ctx.beginPath();
-      ctx.arc(footX, footY - CHARACTER_HEIGHT * 0.45, CHARACTER_HEIGHT * 0.3, 0, Math.PI * 2);
+      ctx.arc(footX, footY - height * 0.45, height * 0.3, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(229, 244, 165, 0.5)';
       ctx.stroke();
@@ -612,29 +708,34 @@ export class Game {
 
   drawNameplate(character) {
     const { ctx } = this;
+    const isCompanion = Boolean(character.isCompanion);
+    const height = isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
     const position = this.interpolated(character);
     const footX = (position.x + 0.5) * TILE - this.camera.x;
     const footY = (position.y + 1) * TILE - this.camera.y;
-    const label = character.isPlayer ? `${character.name} · you` : character.name;
+    let label = character.name;
+    if (character.isPlayer) label = `${character.name} · you`;
+    else if (isCompanion) label = `${character.name} · buddy`;
+
     ctx.save();
     ctx.font = '600 11px system-ui, -apple-system, sans-serif';
     const textWidth = ctx.measureText(label).width;
     const width = textWidth + 16;
-    const height = 22;
+    const boxHeight = 22;
     const x = clamp(footX - width / 2, 6, this.width - width - 6);
-    const y = footY - CHARACTER_HEIGHT - 24;
+    const y = footY - height - 24;
     ctx.fillStyle = 'rgba(10, 17, 12, 0.9)';
     ctx.strokeStyle = 'rgba(163, 210, 139, 0.35)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x, y, width, height, 6);
-    else ctx.rect(x, y, width, height);
+    if (ctx.roundRect) ctx.roundRect(x, y, width, boxHeight, 6);
+    else ctx.rect(x, y, width, boxHeight);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#edf4e9';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, x + width / 2, y + height / 2 + 0.5);
+    ctx.fillText(label, x + width / 2, y + boxHeight / 2 + 0.5);
     ctx.restore();
   }
 
@@ -685,15 +786,16 @@ export class Game {
   }
 
   characterAtScreen(sx, sy) {
-    const characters = [...this.npcs];
+    const characters = [...this.npcs, ...this.companions];
     if (this.player) characters.push(this.player);
     characters.sort((a, b) => this.interpolated(b).y - this.interpolated(a).y);
     for (const character of characters) {
       const position = this.interpolated(character);
       const footX = (position.x + 0.5) * TILE - this.camera.x;
       const footY = (position.y + 1) * TILE - this.camera.y;
-      const width = CHARACTER_HEIGHT * 0.78;
-      if (sx >= footX - width / 2 && sx <= footX + width / 2 && sy >= footY - CHARACTER_HEIGHT && sy <= footY) {
+      const h = character.isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
+      const width = h * 0.78;
+      if (sx >= footX - width / 2 && sx <= footX + width / 2 && sy >= footY - h && sy <= footY) {
         return character;
       }
     }
@@ -752,6 +854,12 @@ export class Game {
   handleKeyDown(event) {
     if (!this.interactive || !this.player) return;
     if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      this.onActionKey?.(this.player);
+      return;
+    }
+
     const move = MOVE_KEYS.get(event.key.toLowerCase());
     if (!move) return;
     event.preventDefault();

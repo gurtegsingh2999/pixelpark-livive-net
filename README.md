@@ -14,6 +14,13 @@ and ES modules — there is no build step to serve it.
   your position, neighbours, and the visible area.
 - **Local character creator** — generate a DiceBear Voxel Art character from a seed and
   customise hair, outfit, glasses, beard, skin, and clothing colours.
+- **Companion buddies** — each player and neighbour gets a companion (using DiceBear **Clay**,
+  **Critters**, **Gaze**, **Sprouts**, or **Voxel bot**) that follows them around the park.
+- **In-world Inventory & Mini-games** — each character carries an inventory with starter items
+  like a bouncy ball and an oversized Tic-Tac-Toe board:
+  - **Fetch**: Throw the ball onto the park grass and watch your companion fetch and return it.
+  - **Tic-Tac-Toe**: Unfurl a giant 3×3 game mat directly onto park tiles. Walk onto squares and
+    press `Enter` or `Space` to place your piece while playing with friends.
 - **Neighbour generator** — roll a crowd, reroll individuals, and add more later.
 - **Tile-based collision** — no two characters can occupy the same tile, including while
   one of them is moving. Movement destinations are reserved.
@@ -70,6 +77,8 @@ Requires Node.js 20 or newer for the tooling; the game itself only needs a moder
 | Pause/start wandering | **Wander on/off** |
 | Add a neighbour | **+ Neighbour** |
 | View friends | **Friends n/m** |
+| Open bag / inventory | **🎒 Bag** |
+| Throw / Action key | `Enter` or `Space` (place TTT mark or interact) |
 
 ## How it works
 
