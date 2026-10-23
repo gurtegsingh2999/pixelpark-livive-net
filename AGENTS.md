@@ -1,0 +1,106 @@
+# AGENTS.md
+
+Guidance for agents working in this repository.
+
+## Project
+
+**Play Park** is a static browser playground for [pp.livive.net](https://pp.livive.net).
+It renders a seeded 64 × 64 tile park on a canvas, generates player and NPC characters
+locally with DiceBear **Voxel Art**, and provides wandering neighbours, bump-to-talk
+dialogue, friendships, and autosave.
+
+The repository root is the deployable site. There is no bundler or framework in the app:
+`index.html`, `css/app.css`, and native ES modules in `src/`. DiceBear is pre-bundled into
+`vendor/dicebear-voxel.js` so the app makes no runtime network requests.
+
+## Commands
+
+```sh
+npm start       # static server at http://localhost:4173
+npm test        # node:test suites in test/
+npm run vendor  # rebuild vendor/dicebear-voxel.js from vendor-src/dicebear.js
+```
+
+`npm install` is only needed for `npm run vendor` or when changing dev tooling. Do not
+commit `node_modules/`.
+
+## Architecture
+
+| Path | Responsibility |
+| --- | --- |
+| `src/main.js` | App state, wizard, HUD, dialogue and friend-list UI, localStorage saves |
+| `src/game.js` | Canvas renderer, camera, movement, collision checks, wander AI |
+| `src/world.js` | Seeded terrain generation, terrain encoding, BFS pathfinding, open-tile search |
+| `src/avatar.js` | DiceBear recipes/options, local SVG generation and image caching |
+| `src/characters.js` | Pure occupancy/reservation helpers used by collision logic |
+| `src/facing.js` | Four-direction mapping and Voxel Art left/right mirroring |
+| `src/names.js` | NPC names, player names, flavour text |
+| `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
+| `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
+| `test/` | `node:test` suites for pure logic |
+
+Keep `src/game.js` import-safe in Node: no DOM access at module top level, only inside the
+`Game` class or its methods. This lets tests import the module and keeps pure logic
+extractable.
+
+## Core invariants
+
+- **No runtime API calls.** Do not switch avatar generation to `api.dicebear.com`. The
+  app must work offline. Add new styles by extending the vendored bundle.
+- **Characters are recipes, not images.** Persist `{ seed, look }`; render the SVG locally.
+  Do not store uploaded avatars in saves.
+- **Tile collision is strict.** A character occupies its current tile and reserves its
+  destination while moving. Player steps and NPC steps must fail if either tile is
+  reserved by someone else. Use `src/characters.js`; do not duplicate the reservation
+  logic.
+- **Bumping is dialogue.** Moving into an NPC should open the dialogue instead of moving
+  or overlapping. Dialogue pauses movement and wanders.
+- **Voxel Art faces left by default.** `shouldMirror(direction)` in `src/facing.js` only
+  mirrors rightward movement (`RIGHT`). Keep that convention if you change rendering.
+- **The world is 64 × 64.** Terrain rows are 64 tiles. `encodeTerrain` produces exactly
+  4,096 characters (`g`, `d`, `s`, `w`, `f`) and `decodeTerrain` validates that.
+- **Save compatibility.** Saves live under `playpark.save.v1`. When changing the shape,
+  either keep reading older saves or bump the version and handle migration. Persist
+  `friends` as NPC IDs, not indexes.
+- **No custom character sprites.** This PoC deliberately uses DiceBear Voxel Art for the
+  player and NPCs. Terrain is procedural and drawn from code.
+
+## Testing policy
+
+- Add or update tests in `test/` for any change to world generation, pathfinding,
+  collision/reservation rules, facing, avatar recipes, saves, or name generation.
+- Prefer pure functions/modules so logic can be tested without a browser.
+- Run `npm test` before committing.
+- Use the browser only for a brief visual/console sanity check, not as the primary test
+  harness. Do not add browser automation or screenshots to the repository.
+
+## UI conventions
+
+- Plain HTML/CSS/JS, native `<button>` elements, labels for inputs, and `aria-*` state
+  where interactive panels toggle.
+- Use the existing CSS variables in `css/app.css`; keep the dark-green park palette.
+- Keep the HUD usable on small screens. Panels are fixed-position and responsive at the
+  existing breakpoints.
+- Do not block the canvas with modal overlays except the setup wizard and dialogue, which
+  intentionally pause play.
+- Player-facing copy is short, friendly, and lower-case casual.
+
+## Workflow
+
+1. Read the relevant module and tests first.
+2. Make the smallest change that fits the existing patterns.
+3. Run `npm test`.
+4. For visual changes, check `npm start` once in a browser.
+5. Commit only source, tests, docs, and required vendor output. Never commit
+   `node_modules`, local saves, screenshots, or secrets.
+
+## Deployment
+
+GitHub Pages serves the repository root. `CNAME` maps it to `pp.livive.net`. Pushing to
+`main` is the deployment step; do not add a build pipeline unless the project actually
+needs one.
+
+## Licenses
+
+- Application code: MIT (`LICENSE`).
+- DiceBear Voxel Art style: CC0 1.0. See `README.md` for attribution.

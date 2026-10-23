@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Play Park</title>
+  <meta name="description" content="A tiny voxel playground. Make a character, fill the park with neighbours, and wander.">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <canvas id="world" aria-label="A 64 by 64 tile park. Use WASD or the arrow keys to walk, or click the ground to move."></canvas>
+
+  <div id="hud" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <strong>Play Park</strong>
+          <small id="world-meta">64 × 64</small>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="wander-toggle" class="pill" type="button" aria-pressed="true"><span class="status-dot" aria-hidden="true"></span><span class="label">Wander on</span></button>
+        <button id="friends-toggle" class="pill friends-pill" type="button" aria-expanded="false" aria-controls="friends-panel"><span class="friend-heart" aria-hidden="true">♥</span><span class="label">Friends</span><span id="friends-count" class="friend-count">0/0</span></button>
+        <button id="add-npc" class="pill" type="button">+ Neighbour</button>
+        <button id="new-park" class="pill quiet" type="button">New park</button>
+      </div>
+    </header>
+
+    <p id="hint">WASD or arrow keys to walk · click the ground to move · bump into a neighbour to talk</p>
+
+    <aside id="npc-card" class="npc-card" hidden aria-live="polite">
+      <button id="npc-close" class="icon-button close" type="button" aria-label="Close character card">×</button>
+      <div class="npc-card-preview"><img id="npc-avatar" alt=""></div>
+      <strong id="npc-name">Neighbour</strong>
+      <p id="npc-vibe">A park regular.</p>
+      <div class="npc-card-actions">
+        <button id="npc-shuffle" class="pill" type="button">New look</button>
+        <button id="npc-remove" class="pill danger" type="button">Remove</button>
+      </div>
+    </aside>
+
+    <aside id="friends-panel" class="friends-panel" hidden aria-label="Friend list">
+      <div class="panel-heading">
+        <strong>Friend list</strong>
+        <button id="friends-close" class="icon-button" type="button" aria-label="Close friend list">×</button>
+      </div>
+      <p id="friends-summary" class="panel-note"></p>
+      <div id="friend-list" class="friend-list" role="list"></div>
+    </aside>
+
+    <section id="dialogue" class="dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="dialogue-name">
+      <div class="dialogue-portrait"><img id="dialogue-avatar" alt=""></div>
+      <div class="dialogue-copy">
+        <span id="dialogue-name" class="dialogue-name"></span>
+        <p id="dialogue-text"></p>
+        <div id="dialogue-choices" class="dialogue-choices"></div>
+      </div>
+    </section>
+
+    <div class="minimap-wrap" aria-hidden="true">
+      <canvas id="minimap" width="320" height="320"></canvas>
+      <span>Park map</span>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <div id="wizard" class="overlay" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+    <div class="wizard-card">
+      <header class="wizard-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <strong id="wizard-title">Play Park</strong>
+            <small>A tiny voxel playground</small>
+          </div>
+        </div>
+        <ol class="steps" aria-label="Setup steps">
+          <li id="step-dot-1" class="active"><span>1</span> You</li>
+          <li id="step-dot-2"><span>2</span> Neighbours</li>
+        </ol>
+      </header>
+
+      <section id="step-character" class="wizard-step character-step">
+        <aside class="character-preview">
+          <div class="avatar-stage">
+            <img id="player-preview" alt="Your generated Voxel Art character">
+          </div>
+          <label class="field">
+            <span>Your name</span>
+            <input id="player-name" type="text" maxlength="24" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>Avatar seed</span>
+            <input id="player-seed" type="text" maxlength="64" autocomplete="off" spellcheck="false">
+          </label>
+          <p class="seed-note">Same seed, same character — forever.</p>
+        </aside>
+
+        <div class="character-controls">
+          <div class="step-heading">
+            <h1>Make your character</h1>
+            <p>Every neighbour is generated right here in your browser with DiceBear Voxel Art. No account, no uploads, no network calls.</p>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Hair / headwear</span>
+              <div class="select-row variant"><span class="swatch" id="swatch-top"></span><select id="look-top"></select></div>
+            </label>
+            <label class="field">
+              <span>Outfit</span>
+              <div class="select-row variant"><span class="swatch" id="swatch-outfit"></span><select id="look-outfit"></select></div>
+            </label>
+            <label class="field">
+              <span>Glasses</span>
+              <div class="select-row variant"><span class="swatch" id="swatch-glasses"></span><select id="look-glasses"></select></div>
+            </label>
+            <label class="field">
+              <span>Beard</span>
+              <div class="select-row variant"><span class="swatch" id="swatch-beard"></span><select id="look-beard"></select></div>
+            </label>
+            <label class="field">
+              <span>Skin</span>
+              <div class="select-row"><span class="swatch" id="swatch-skin"></span><select id="look-skin"></select></div>
+            </label>
+            <label class="field">
+              <span>Hair colour</span>
+              <div class="select-row"><span class="swatch" id="swatch-hair"></span><select id="look-hair"></select></div>
+            </label>
+            <label class="field">
+              <span>Shirt</span>
+              <div class="select-row"><span class="swatch" id="swatch-shirt"></span><select id="look-shirt"></select></div>
+            </label>
+            <label class="field">
+              <span>Trousers</span>
+              <div class="select-row"><span class="swatch" id="swatch-pants"></span><select id="look-pants"></select></div>
+            </label>
+            <label class="field">
+              <span>Shoes</span>
+              <div class="select-row"><span class="swatch" id="swatch-shoes"></span><select id="look-shoes"></select></div>
+            </label>
+          </div>
+
+          <div class="wizard-actions">
+            <button id="reset-look" class="pill quiet" type="button">Reset style</button>
+            <button id="shuffle-look" class="pill" type="button">Shuffle look</button>
+            <button id="to-crowd" class="primary" type="button">Next: neighbours</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="step-crowd" class="wizard-step crowd-step" hidden>
+        <div class="step-heading crowd-heading">
+          <div>
+            <h1>Who lives in the park?</h1>
+            <p>Roll a crowd, then tweak anyone who catches your eye. You can add more later.</p>
+          </div>
+          <div class="crowd-controls">
+            <label class="count-field" for="crowd-count">
+              <span>Neighbours <output id="crowd-count-label" for="crowd-count">10</output></span>
+              <input id="crowd-count" type="range" min="0" max="24" value="10" step="1">
+            </label>
+            <button id="shuffle-crowd" class="pill" type="button">Shuffle crowd</button>
+          </div>
+        </div>
+
+        <div id="crowd-grid" class="crowd-grid" role="list"></div>
+
+        <div class="wizard-actions split">
+          <button id="back-to-character" class="pill quiet" type="button">Back</button>
+          <button id="enter-park" class="primary" type="button">Enter the park</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
