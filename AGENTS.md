@@ -16,6 +16,8 @@ The repository root is the deployable site. There is no bundler or framework in 
 ## Commands
 
 ```sh
+./install.sh    # install dev dependencies
+./run.sh        # static server at http://localhost:4173
 npm start       # static server at http://localhost:4173
 npm test        # node:test suites in test/
 npm run vendor  # rebuild vendor/dicebear-voxel.js from vendor-src/dicebear.js
@@ -28,13 +30,16 @@ commit `node_modules/`.
 
 | Path | Responsibility |
 | --- | --- |
-| `src/main.js` | App state, wizard, HUD, dialogue and friend-list UI, localStorage saves |
+| `data/entities.json` | NPC names, player names, and vibes/flavour text |
+| `src/main.js` | App state, wizard, HUD, dialogue and friend-list UI |
+| `src/dialogue.js` | Dialogue manager for conversations and friendship updates |
+| `src/storage.js` | LocalStorage serialization and schema management |
 | `src/game.js` | Canvas renderer, camera, movement, collision checks, wander AI |
 | `src/world.js` | Seeded terrain generation, terrain encoding, BFS pathfinding, open-tile search |
 | `src/avatar.js` | DiceBear recipes/options, local SVG generation and image caching |
 | `src/characters.js` | Pure occupancy/reservation helpers used by collision logic |
 | `src/facing.js` | Four-direction mapping and Voxel Art left/right mirroring |
-| `src/names.js` | NPC names, player names, flavour text |
+| `src/names.js` | Name picker and vibe generator backed by `data/entities.json` |
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
 | `test/` | `node:test` suites for pure logic |

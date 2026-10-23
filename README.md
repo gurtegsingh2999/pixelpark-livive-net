@@ -30,6 +30,13 @@ and ES modules — there is no build step to serve it.
 ## Quick start
 
 ```sh
+./install.sh    # install dev dependencies
+./run.sh        # start local static server at http://localhost:4173
+```
+
+Or using standard npm commands:
+
+```sh
 npm start
 ```
 
@@ -69,13 +76,16 @@ Requires Node.js 20 or newer for the tooling; the game itself only needs a moder
 ```text
 index.html              Canvas, HUD, setup wizard, dialogue, friend list
 css/app.css             Layout, panels, responsive rules
-src/main.js             App state, wizard, dialogue/friends UI, persistence
+data/entities.json      NPC names, player names, and personality vibe text
+src/main.js             App state, wizard, UI wiring, game loop lifecycle
 src/game.js             Camera, rendering loop, movement, collision, NPC AI
+src/dialogue.js         Dialogue manager for bump-to-talk conversations
+src/storage.js          Game state persistence and localStorage schema
 src/world.js            Seeded world generation, terrain encoding, pathfinding
 src/avatar.js           DiceBear recipes, local SVG generation, image cache
 src/characters.js       Pure tile-occupancy and reservation helpers
 src/facing.js           Direction mapping and left/right mirroring
-src/names.js            Neighbour names and flavour text
+src/names.js            Name picker and vibe selectors backed by entities.json
 vendor-src/dicebear.js  Entry point for the vendored bundle
 vendor/dicebear-voxel.js Generated DiceBear + Voxel Art bundle (committed)
 test/                   Node test runner suites for pure logic

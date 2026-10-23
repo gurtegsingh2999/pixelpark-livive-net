@@ -20,7 +20,9 @@ import {
   findOpenTile
 } from './world.js';
 import { PLAYER_NAMES, pickName, pickVibe } from './names.js';
-const STORAGE_KEY = 'playpark.save.v1';
+import { serializeSave, saveState, loadSave, clearSave } from './storage.js';
+import { DialogueManager } from './dialogue.js';
+
 const MAX_NPCS = 40;
 const DEFAULT_CROWD = 10;
 const LOOK_FIELDS = ['top', 'outfit', 'glasses', 'beard', 'skin', 'hair', 'shirt', 'pants', 'shoes'];
@@ -31,7 +33,7 @@ const $ = id => document.getElementById(id);
 let game = null;
 let draft = null;
 let cardCharacter = null;
-let dialogueNpc = null;
+let dialogue = null;
 let friends = new Set();
 let toastTimer = 0;
 let entered = false;
@@ -131,74 +133,26 @@ function toggleFriendsPanel() {
   renderFriendList();
 }
 
-function setDialogueBeat(text, choices) {
-  $('dialogue-text').textContent = text;
-  const container = $('dialogue-choices');
-  container.replaceChildren();
-
-  for (const choice of choices) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = choice.className || 'pill';
-    button.textContent = choice.label;
-    button.addEventListener('click', choice.onClick);
-    container.append(button);
-  }
-
-  window.requestAnimationFrame(() => container.querySelector('button')?.focus({ preventScroll: true }));
-}
-
-function openDialogue(npc) {
-  if (!npc) return;
-  dialogueNpc = npc;
-  closeCard();
-  closeFriendsPanel();
-  game.select(npc.id);
-  document.body.classList.add('dialogue-open');
-  $('dialogue').hidden = false;
-  $('dialogue-avatar').src = avatarDataUrl(npc.recipe);
-  $('dialogue-avatar').alt = `${npc.name}'s character`;
-  $('dialogue-name').textContent = npc.name;
-
-  if (friends.has(npc.id)) {
-    setDialogueBeat(`Hi, I'm ${npc.name}. Good to see you again!`, [
-      { label: 'See you', className: 'primary', onClick: closeDialogue }
-    ]);
-    return;
-  }
-
-  setDialogueBeat(`Hi, I'm ${npc.name}. Do you want to be friends?`, [
-    { label: 'Yes', className: 'primary', onClick: acceptFriendship },
-    { label: 'No', className: 'pill quiet', onClick: declineFriendship }
-  ]);
-}
-
-function acceptFriendship() {
-  if (!dialogueNpc) return;
-  friends.add(dialogueNpc.id);
+function onFriendshipChanged(npcId, isFriend) {
+  if (isFriend) friends.add(npcId);
+  else friends.delete(npcId);
   updateFriendsUI();
   saveNow();
-  setDialogueBeat(`Yay! ${dialogueNpc.name} is your friend now.`, [
-    { label: 'Nice', className: 'primary', onClick: closeDialogue }
-  ]);
 }
 
-function declineFriendship() {
-  if (!dialogueNpc) return;
-  setDialogueBeat('No worries. Maybe next time.', [
-    { label: 'Bye', className: 'pill', onClick: closeDialogue }
-  ]);
-}
-
-function closeDialogue() {
-  if ($('dialogue').hidden) return;
-  $('dialogue').hidden = true;
-  document.body.classList.remove('dialogue-open');
-  dialogueNpc = null;
+function onDialogueEnded() {
   game?.select(null);
   game?.resumeFromDialogue();
   updateFriendsUI();
   saveNow();
+}
+
+function openDialogue(npc) {
+  if (!npc) return;
+  closeCard();
+  closeFriendsPanel();
+  game.select(npc.id);
+  dialogue.open(npc, friends.has(npc.id));
 }
 
 function fillSelect(select, entries) {
@@ -377,7 +331,7 @@ function openWizard({ fresh = false } = {}) {
     friends = new Set();
   }
 
-  if (!$('dialogue').hidden) closeDialogue();
+  if (dialogue?.isOpen()) dialogue.close();
   closeFriendsPanel();
   entered = false;
   game.setInteractive(false);
@@ -401,6 +355,11 @@ function closeWizard() {
 
 function ensureGame() {
   if (!game) {
+    dialogue = new DialogueManager({
+      onDialogueEnd: onDialogueEnded,
+      onFriendshipChange: onFriendshipChanged
+    });
+
     game = new Game({
       canvas: $('world'),
       minimap: $('minimap'),
@@ -610,55 +569,10 @@ function applyState(state) {
   updateMeta();
 }
 
-function collectSave() {
-  if (!game?.terrain || !game.player || !draft) return null;
-  return {
-    version: 1,
-    savedAt: new Date().toISOString(),
-    worldSeed: game.worldSeed,
-    terrain: encodeTerrain(game.terrain),
-    playerName: game.player.name,
-    playerRecipe: game.player.recipe,
-    player: {
-      x: game.player.x,
-      y: game.player.y,
-      direction: game.player.direction
-    },
-    npcs: game.npcs.map(npc => ({
-      id: npc.id,
-      name: npc.name,
-      recipe: npc.recipe,
-      vibe: npc.vibe,
-      x: npc.x,
-      y: npc.y,
-      direction: npc.direction
-    })),
-    friends: [...friends],
-    wander: game.wander
-  };
-}
-
 function saveNow() {
   if (!entered) return;
-  const state = collectSave();
-  if (!state) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Saving is a convenience; the playground still works without it.
-  }
-}
-
-function loadSave() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const state = JSON.parse(raw);
-    if (state?.version !== 1 || !state.playerRecipe || !decodeTerrain(state.terrain)) return null;
-    return state;
-  } catch {
-    return null;
-  }
+  const state = serializeSave(game, draft, friends);
+  saveState(state);
 }
 
 function addNeighbour() {
@@ -762,11 +676,7 @@ function bindEvents() {
   $('add-npc').addEventListener('click', addNeighbour);
   $('new-park').addEventListener('click', () => {
     if (!window.confirm('Start a new park? Your current park and neighbours will be replaced.')) return;
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ignore storage failures.
-    }
+    clearSave();
     entered = false;
     openWizard({ fresh: true });
   });
@@ -777,8 +687,8 @@ function bindEvents() {
 
   window.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
-    if (!$('dialogue').hidden) {
-      closeDialogue();
+    if (dialogue?.isOpen()) {
+      dialogue.close();
       return;
     }
     if (!$('friends-panel').hidden) {
