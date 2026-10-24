@@ -31,7 +31,39 @@ export class DialogueManager {
       this.choices.append(button);
     }
 
+    this.bindArrowNavigation();
     window.requestAnimationFrame(() => this.choices.querySelector('button')?.focus({ preventScroll: true }));
+  }
+
+  bindArrowNavigation() {
+    if (this._hasKeyNav) return;
+    this._hasKeyNav = true;
+
+    window.addEventListener('keydown', event => {
+      if (!this.isOpen()) return;
+      const key = event.key.toLowerCase();
+      const isNext = key === 'arrowright' || key === 'arrowdown' || key === 's' || key === 'd';
+      const isPrev = key === 'arrowleft' || key === 'arrowup' || key === 'w' || key === 'a';
+
+      if (!isNext && !isPrev) return;
+
+      const buttons = Array.from(this.choices.querySelectorAll('button'));
+      if (!buttons.length) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const currentIndex = buttons.indexOf(document.activeElement);
+      let nextIndex = 0;
+      if (currentIndex === -1) {
+        nextIndex = 0;
+      } else if (isNext) {
+        nextIndex = (currentIndex + 1) % buttons.length;
+      } else if (isPrev) {
+        nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+      }
+      buttons[nextIndex]?.focus({ preventScroll: true });
+    }, { capture: true });
   }
 
   open(npc, isFriend, { canPlayTicTacToe = false } = {}) {

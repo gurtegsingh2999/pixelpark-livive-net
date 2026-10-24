@@ -35,15 +35,15 @@ export class TicTacToeMiniGame {
   }
 
   findPlacementSpot(aroundX, aroundY) {
-    // Prefer directly to the right of where the player is standing
+    // Directly next to the player on the right (player at aroundX, board starts at aroundX + 1)
     const offsets = [
-      { dx: 2, dy: -1 }, // directly right-aligned
-      { dx: 3, dy: -1 },
-      { dx: -4, dy: -1 },
-      { dx: -1, dy: 2 },
-      { dx: -1, dy: -4 },
-      { dx: 2, dy: 0 },
-      { dx: -5, dy: 0 }
+      { dx: 1, dy: -1 }, // directly adjacent right!
+      { dx: 1, dy: 0 },
+      { dx: 1, dy: -2 },
+      { dx: 2, dy: -1 },
+      { dx: -3, dy: -1 },
+      { dx: -1, dy: 1 },
+      { dx: -1, dy: -3 }
     ];
 
     for (const offset of offsets) {
@@ -92,16 +92,27 @@ export class TicTacToeMiniGame {
       const comp = this.game.getCompanionFor(opponent.id);
       if (comp) {
         comp.fetchTarget = null;
-        comp.x = spot.originX + 4;
-        comp.y = sidelineY;
+        comp.stagedDestination = { x: spot.originX + 4, y: sidelineY };
+        const compPath = findPath(this.game.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination);
+        if (compPath.length) {
+          comp.path = compPath;
+        } else {
+          comp.x = spot.originX + 4;
+          comp.y = sidelineY;
+        }
         comp.direction = 3;
       }
     }
 
-    // Also freeze player's companion beside the player if nearby
+    // Also stage player's companion beside the player
     const playerComp = this.game.getCompanionFor(player.id);
     if (playerComp) {
       playerComp.fetchTarget = null;
+      playerComp.stagedDestination = { x: player.x, y: spot.originY + 1 };
+      const pCompPath = findPath(this.game.terrain, { x: playerComp.x, y: playerComp.y }, playerComp.stagedDestination);
+      if (pCompPath.length) {
+        playerComp.path = pCompPath;
+      }
     }
 
     this.activeBoard = {
@@ -154,6 +165,12 @@ export class TicTacToeMiniGame {
       }
       opponent.direction = 3;
     }
+  }
+
+  isTileOnBoard(x, y) {
+    if (!this.activeBoard) return false;
+    const { originX, originY } = this.activeBoard;
+    return x >= originX && x <= originX + 2 && y >= originY && y <= originY + 2;
   }
 
   startRefolding(onComplete) {
@@ -370,17 +387,28 @@ export class TicTacToeMiniGame {
     const targetX = board.originX + col;
     const targetY = board.originY + row;
 
-    // Pathfind opponent to the target cell
-    const path = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: targetX, y: targetY });
+    // Clear any previous interval or lingering destination
+    if (this._arrivalInterval) {
+      clearInterval(this._arrivalInterval);
+      this._arrivalInterval = null;
+    }
+
+    // Pathfind opponent from their current position (whether on sideline or walking back) to target cell
+    const currentOppX = opponent.moving ? opponent.toX : opponent.x;
+    const currentOppY = opponent.moving ? opponent.toY : opponent.y;
+    const path = findPath(this.game.terrain, { x: currentOppX, y: currentOppY }, { x: targetX, y: targetY });
+
     if (path.length) {
       opponent.path = path;
-      const checkArrival = setInterval(() => {
+      this._arrivalInterval = setInterval(() => {
         if (!this.activeBoard || this.activeBoard.turn !== 'opponent') {
-          clearInterval(checkArrival);
+          clearInterval(this._arrivalInterval);
+          this._arrivalInterval = null;
           return;
         }
         if (opponent.x === targetX && opponent.y === targetY && !opponent.moving) {
-          clearInterval(checkArrival);
+          clearInterval(this._arrivalInterval);
+          this._arrivalInterval = null;
           this.handleAction(opponent);
         }
       }, 50);

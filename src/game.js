@@ -451,6 +451,17 @@ export class Game {
     const nx = character.x + dx;
     const ny = character.y + dy;
     if (!isWalkable(typeAt(this.terrain, nx, ny))) return false;
+
+    // Disallow characters who are NOT active participants in Tic-Tac-Toe from stepping onto the board
+    const tttGame = this.miniGames.find(m => m.isTileOnBoard && m.isOpen && m.isOpen());
+    if (tttGame && tttGame.isTileOnBoard(nx, ny)) {
+      const isPlayer = character === this.player;
+      const isOpponent = character === tttGame.activeBoard?.opponent;
+      if (!isPlayer && !isOpponent) {
+        return false;
+      }
+    }
+
     character.fromX = character.x;
     character.fromY = character.y;
     character.toX = nx;
@@ -565,9 +576,28 @@ export class Game {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
     }
 
-    // Freeze all companions in place during active mini-games (e.g. Tic-Tac-Toe)
+    // During active mini-games, companions only move if they are navigating to their staged spectator position
     const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
     if (isMiniGameActive) {
+      if (comp.stagedDestination) {
+        if (comp.x === comp.stagedDestination.x && comp.y === comp.stagedDestination.y) {
+          comp.stagedDestination = null;
+          comp.path = [];
+          comp.moving = false;
+          return;
+        }
+        if (comp.path && comp.path.length) {
+          const next = comp.path.shift();
+          const dx = next.x - comp.x;
+          const dy = next.y - comp.y;
+          if (Math.abs(dx) + Math.abs(dy) === 1) {
+            this.tryStep(comp, dx, dy, COMPANION_STEP);
+          } else {
+            comp.path = [];
+          }
+          return;
+        }
+      }
       comp.moving = false;
       return;
     }
