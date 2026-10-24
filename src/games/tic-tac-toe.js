@@ -88,23 +88,24 @@ export class TicTacToeMiniGame {
       }
       opponent.direction = 3; // Facing left toward board
 
-      // Companion stands exactly 1 tile above or below the standing position of the NPC:
-      // NPC stands at (sidelineX, sidelineY). Try 1 tile above (sidelineY - 1), or 1 tile below (sidelineY + 1).
-      const comp = this.game.getCompanionFor(opponent.id);
-      if (comp) {
-        comp.fetchTarget = null;
-        let compTargetY = sidelineY - 1;
-        if (!isWalkable(typeAt(this.game.terrain, sidelineX, compTargetY))) {
-          compTargetY = sidelineY + 1;
+      // Opponent's companion stands exactly 1 tile above or below the standing position of the OPPONENT:
+      // Opponent stands at (sidelineX, sidelineY). Try 1 tile above (sidelineY - 1), or 1 tile below (sidelineY + 1).
+      const opponentComp = this.game.getCompanionFor(opponent.id);
+      if (opponentComp) {
+        opponentComp.fetchTarget = null;
+        let oppCompY = sidelineY - 1;
+        if (!isWalkable(typeAt(this.game.terrain, sidelineX, oppCompY))) {
+          oppCompY = sidelineY + 1;
         }
-        comp.stagedDestination = { x: sidelineX, y: compTargetY };
-        const compPath = findPath(this.game.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination);
-        comp.path = compPath.length ? compPath : [];
-        comp.direction = 3;
+        opponentComp.stagedDestination = { x: sidelineX, y: oppCompY };
+        const compPath = findPath(this.game.terrain, { x: opponentComp.x, y: opponentComp.y }, opponentComp.stagedDestination);
+        opponentComp.path = compPath.length ? compPath : [];
+        opponentComp.direction = 3;
       }
     }
 
-    // Also stage player's companion 1 tile above or below the player
+    // Player's companion stands strictly next to the PLAYER (not the opponent!):
+    // Player stands at (player.x, player.y). Try 1 tile above or below the player.
     const playerComp = this.game.getCompanionFor(player.id);
     if (playerComp) {
       playerComp.fetchTarget = null;
