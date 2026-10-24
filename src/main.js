@@ -22,9 +22,11 @@ import { FetchMiniGame } from './games/fetch.js';
 import { TicTacToeMiniGame } from './games/tic-tac-toe.js';
 import { SetupWizard } from './ui/wizard.js';
 import { PanelsUI } from './ui/panels.js';
+import engineConfig from '../data/engine_config.json' with { type: 'json' };
+import dialogueData from '../data/dialogues.json' with { type: 'json' };
 
-const MAX_NPCS = 40;
-const DEFAULT_CROWD = 10;
+const MAX_NPCS = engineConfig.crowd.maxNpcs;
+const DEFAULT_CROWD = engineConfig.crowd.defaultCount;
 
 const $ = id => document.getElementById(id);
 
@@ -151,125 +153,72 @@ function openWizard({ fresh = false } = {}) {
 
 function onTTTGameEnd(winner, opponent) {
   if (!opponent) return;
-  const winText = winner === 'X'
-    ? `Great game! You won that round. Want to play again?`
-    : (winner === 'O' ? `Haha, gotcha! Good match. Want another round?` : `That was a tight draw! Want a rematch?`);
+  const tttSpecs = dialogueData.dialogues.ttt;
+  const winText = winner === 'X' ? tttSpecs.win : (winner === 'O' ? tttSpecs.loss : tttSpecs.draw);
 
-  dialogue.openCustomBeat(opponent, winText, [
-    {
-      label: 'Play again',
-      className: 'primary',
-      onClick: () => {
-        dialogue.close();
+  const choices = tttSpecs.endChoices.map(c => ({
+    label: c.label,
+    className: c.className,
+    onClick: () => {
+      dialogue.close();
+      if (c.action === 'play_again') {
         tttGame?.resetRound();
-      }
-    },
-    {
-      label: 'Pack up',
-      className: 'pill quiet',
-      onClick: () => {
-        dialogue.close();
+      } else {
         tttGame?.packUpBoard();
       }
     }
-  ]);
+  }));
+
+  dialogue.openCustomBeat(opponent, winText, choices);
 }
 
 function openPlayerMenu() {
   if (!game?.player) return;
   const player = game.player;
 
-  const choices = [
-    {
-      label: '🎒 Backpack',
-      className: 'primary',
-      onClick: () => {
-        dialogue.close();
-        panels?.toggleInventoryPanel();
-      }
-    },
-    {
-      label: '🐾 Companions',
-      className: 'pill',
-      onClick: () => {
-        dialogue.close();
-        // Inspect player companion if present, otherwise show companion info
+  const choices = dialogueData.playerMenu.items.map(item => ({
+    label: item.label,
+    className: item.className,
+    onClick: () => {
+      dialogue.close();
+      if (item.id === 'backpack') panels?.toggleInventoryPanel();
+      else if (item.id === 'companions') {
         const playerComp = game.companions?.find(c => c.buddyId === 'player');
-        if (playerComp) {
-          panels?.showCard(playerComp);
-        } else {
-          showToast('No companions following you right now.');
-        }
-      }
-    },
-    {
-      label: '👥 Friends',
-      className: 'pill',
-      onClick: () => {
-        dialogue.close();
-        panels?.toggleFriendsPanel();
-      }
-    },
-    {
-      label: '🏆 Stats',
-      className: 'pill',
-      onClick: () => {
-        dialogue.close();
-        panels?.toggleStatsPanel();
-      }
-    },
-    {
-      label: '⚙️ Debug',
-      className: 'pill',
-      onClick: () => {
-        openDebugMenu();
-      }
-    },
-    {
-      label: 'Close',
-      className: 'pill quiet',
-      onClick: () => dialogue.close()
+        if (playerComp) panels?.showCard(playerComp);
+        else showToast('No companions following you right now.');
+      } else if (item.id === 'friends') panels?.toggleFriendsPanel();
+      else if (item.id === 'stats') panels?.toggleStatsPanel();
+      else if (item.id === 'debug') openDebugMenu();
     }
-  ];
+  }));
 
-  dialogue.openCustomBeat(player, 'What would you like to do?', choices);
+  dialogue.openCustomBeat(player, dialogueData.playerMenu.title, choices);
 }
 
 function openDebugMenu() {
   if (!game?.player) return;
   const player = game.player;
 
-  const choices = [
-    {
-      label: '+ Neighbour',
-      className: 'primary',
-      onClick: () => {
+  const choices = dialogueData.debugMenu.items.map(item => ({
+    label: item.label,
+    className: item.className,
+    onClick: () => {
+      if (item.id === 'addNeighbour') {
         addNeighbour();
-        // Re-display or update dialogue
         dialogue.close();
-      }
-    },
-    {
-      label: 'New Park',
-      className: 'danger',
-      onClick: () => {
+      } else if (item.id === 'newPark') {
         dialogue.close();
         if (!window.confirm('Start a new park? Your current park and neighbours will be replaced.')) return;
         clearSave();
         entered = false;
         openWizard({ fresh: true });
-      }
-    },
-    {
-      label: '← Back',
-      className: 'pill quiet',
-      onClick: () => {
+      } else if (item.id === 'back') {
         openPlayerMenu();
       }
     }
-  ];
+  }));
 
-  dialogue.openCustomBeat(player, 'Debug Options', choices);
+  dialogue.openCustomBeat(player, dialogueData.debugMenu.title, choices);
 }
 
 function handleActionKey(character) {
@@ -296,24 +245,17 @@ function handleActionKey(character) {
 function onAbandonPrompt(onConfirm, onCancel) {
   const opponent = tttGame?.activeBoard?.opponent;
   const oppName = opponent?.name || 'Your friend';
-  dialogue.openCustomBeat(opponent, `${oppName}: Are you walking away? Abandon the Tic-Tac-Toe game and pack up?`, [
-    {
-      label: 'Abandon & pack up',
-      className: 'danger',
-      onClick: () => {
-        dialogue.close();
-        onConfirm();
-      }
-    },
-    {
-      label: 'Keep playing',
-      className: 'primary',
-      onClick: () => {
-        dialogue.close();
-        onCancel();
-      }
+  const promptText = dialogueData.dialogues.ttt.abandonPrompt.replace('{name}', oppName);
+  const choices = dialogueData.dialogues.ttt.abandonChoices.map(c => ({
+    label: c.label,
+    className: c.className,
+    onClick: () => {
+      dialogue.close();
+      if (c.action === 'abandon') onConfirm();
+      else onCancel();
     }
-  ]);
+  }));
+  dialogue.openCustomBeat(opponent, promptText, choices);
 }
 
 function ensureGame() {
@@ -701,6 +643,60 @@ function bindEvents() {
 
   $('npc-shuffle').addEventListener('click', rerollCardCharacter);
   $('npc-remove').addEventListener('click', removeCardCharacter);
+
+  // Mobile / touch screen virtual d-pad & action buttons
+  const simulateKey = (key, type = 'keydown') => {
+    const event = new KeyboardEvent(type, {
+      key,
+      code: key === 'Enter' ? 'Enter' : (key === 'Escape' ? 'Escape' : (key === 'ArrowUp' ? 'ArrowUp' : (key === 'ArrowDown' ? 'ArrowDown' : (key === 'ArrowLeft' ? 'ArrowLeft' : 'ArrowRight')))),
+      bubbles: true,
+      cancelable: true
+    });
+    window.dispatchEvent(event);
+  };
+
+  const bindTouchButton = (id, key) => {
+    const btn = $(id);
+    if (!btn) return;
+    let isDown = false;
+    let repeatTimer = null;
+
+    const start = e => {
+      e.preventDefault();
+      if (isDown) return;
+      isDown = true;
+      simulateKey(key, 'keydown');
+      // For movement keys, auto-repeat while held
+      if (key.startsWith('Arrow')) {
+        repeatTimer = window.setInterval(() => {
+          if (isDown) simulateKey(key, 'keydown');
+        }, 180);
+      }
+    };
+
+    const stop = e => {
+      if (!isDown) return;
+      e.preventDefault();
+      isDown = false;
+      if (repeatTimer) {
+        window.clearInterval(repeatTimer);
+        repeatTimer = null;
+      }
+      simulateKey(key, 'keyup');
+    };
+
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', stop);
+    btn.addEventListener('pointercancel', stop);
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  };
+
+  bindTouchButton('touch-up', 'ArrowUp');
+  bindTouchButton('touch-down', 'ArrowDown');
+  bindTouchButton('touch-left', 'ArrowLeft');
+  bindTouchButton('touch-right', 'ArrowRight');
+  bindTouchButton('touch-enter', 'Enter');
+  bindTouchButton('touch-esc', 'Escape');
 
   window.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;

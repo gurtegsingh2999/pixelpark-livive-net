@@ -117,4 +117,11 @@ test('addNpc properly tracks companion with buddy', () => {
   assert.equal(game.companions.length, 1);
   assert.equal(game.companions[0].id, 'comp-test');
   assert.equal(game.companions[0].buddyId, 'npc-test');
+  assert.ok(Number.isFinite(game.companions[0].x));
+  assert.ok(Number.isFinite(game.companions[0].y));
+  assert.notEqual(game.companions[0].x, NaN);
+  assert.notEqual(game.companions[0].y, NaN);
+  // Ensure the NPC didn't spawn immediately under the player
+  const distPlayerNpc = Math.abs(added.x - game.player.x) + Math.abs(added.y - game.player.y);
+  assert.ok(distPlayerNpc >= 6, `Expected distance >= 6, got ${distPlayerNpc}`);
 });

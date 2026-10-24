@@ -10,6 +10,17 @@
  *   tailored to how that specific creature/character moves and idles!
  */
 
+/**
+ * Generic evaluator for periodic modulo-based animation frames.
+ */
+function evaluateCycleFrames(t, cycles) {
+  for (const { period, min, max, frame } of cycles) {
+    const cycle = (t % period) / period;
+    if (cycle >= min && cycle <= max) return frame;
+  }
+  return 'default';
+}
+
 export const ANIMATION_PROFILES = {
   // --- Voxel Art (Player & NPCs) ---
   // Bipedal humanoid:
@@ -20,18 +31,13 @@ export const ANIMATION_PROFILES = {
     frames: ['default', 'blink', 'stretch', 'look-left', 'look-right', 'talk'],
 
     getFrame(t) {
-      const blinkCycle = (t % 3.2) / 3.2;
-      if (blinkCycle >= 0.88 && blinkCycle <= 0.96) return 'blink';
-
-      const stretchCycle = (t % 4.5) / 4.5;
-      if (stretchCycle >= 0.72 && stretchCycle <= 0.86) return 'stretch';
-
-      const actionCycle = (t % 6.0) / 6.0;
-      if (actionCycle >= 0.15 && actionCycle < 0.30) return 'look-right';
-      if (actionCycle >= 0.45 && actionCycle < 0.58) return 'talk';
-      if (actionCycle >= 0.70 && actionCycle < 0.85) return 'look-left';
-
-      return 'default';
+      return evaluateCycleFrames(t, [
+        { period: 3.2, min: 0.88, max: 0.96, frame: 'blink' },
+        { period: 4.5, min: 0.72, max: 0.86, frame: 'stretch' },
+        { period: 6.0, min: 0.15, max: 0.30, frame: 'look-right' },
+        { period: 6.0, min: 0.45, max: 0.58, frame: 'talk' },
+        { period: 6.0, min: 0.70, max: 0.85, frame: 'look-left' }
+      ]);
     },
 
     getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
@@ -128,18 +134,13 @@ export const ANIMATION_PROFILES = {
     frames: ['default', 'blink', 'stretch', 'look-left', 'look-right', 'talk'],
 
     getFrame(t) {
-      const blinkCycle = (t % 3.4) / 3.4;
-      if (blinkCycle >= 0.88 && blinkCycle <= 0.96) return 'blink';
-
-      const stretchCycle = (t % 4.5) / 4.5;
-      if (stretchCycle >= 0.70 && stretchCycle <= 0.86) return 'stretch';
-
-      const actionCycle = (t % 5.8) / 5.8;
-      if (actionCycle >= 0.18 && actionCycle < 0.34) return 'look-right';
-      if (actionCycle >= 0.48 && actionCycle < 0.62) return 'talk';
-      if (actionCycle >= 0.72 && actionCycle < 0.86) return 'look-left';
-
-      return 'default';
+      return evaluateCycleFrames(t, [
+        { period: 3.4, min: 0.88, max: 0.96, frame: 'blink' },
+        { period: 4.5, min: 0.70, max: 0.86, frame: 'stretch' },
+        { period: 5.8, min: 0.18, max: 0.34, frame: 'look-right' },
+        { period: 5.8, min: 0.48, max: 0.62, frame: 'talk' },
+        { period: 5.8, min: 0.72, max: 0.86, frame: 'look-left' }
+      ]);
     },
 
     getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {

@@ -1,5 +1,10 @@
 import { avatarDataUrl, bindAnimatedAvatar } from './avatar.js';
 import { formatCompanionInfo } from './characters.js';
+import dialogueData from '../data/dialogues.json' with { type: 'json' };
+
+function interpolate(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? '');
+}
 
 export class DialogueManager {
   constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame } = {}) {
@@ -79,9 +84,11 @@ export class DialogueManager {
     // Handle companion dialogue (shows name, class, and type)
     if (character.isCompanion) {
       const info = formatCompanionInfo(character);
-      this.setBeat(info.text, [
-        { label: 'Nice buddy!', className: 'primary', onClick: () => this.close() }
-      ]);
+      const choices = dialogueData.dialogues.companion.choices.map(c => ({
+        ...c,
+        onClick: () => this.close()
+      }));
+      this.setBeat(info.text, choices);
       return;
     }
 
@@ -90,7 +97,7 @@ export class DialogueManager {
       const choices = [];
       if (canPlayTicTacToe) {
         choices.push({
-          label: 'Play Tic-Tac-Toe',
+          label: dialogueData.dialogues.friend.playTttLabel,
           className: 'primary',
           onClick: () => {
             const opponent = this.dialogueNpc;
@@ -99,16 +106,23 @@ export class DialogueManager {
           }
         });
       }
-      choices.push({ label: 'See you', className: choices.length ? 'pill quiet' : 'primary', onClick: () => this.close() });
+      choices.push({
+        label: dialogueData.dialogues.friend.closeLabel,
+        className: choices.length ? 'pill quiet' : 'primary',
+        onClick: () => this.close()
+      });
 
-      this.setBeat(`Hi, I'm ${npc.name}. Good to see you again!`, choices);
+      this.setBeat(interpolate(dialogueData.dialogues.friend.text, { name: npc.name }), choices);
       return;
     }
 
-    this.setBeat(`Hi, I'm ${npc.name}. Do you want to be friends?`, [
-      { label: 'Yes', className: 'primary', onClick: () => this.acceptFriendship() },
-      { label: 'No', className: 'pill quiet', onClick: () => this.declineFriendship() }
-    ]);
+    const strangerSpec = dialogueData.dialogues.stranger;
+    const choices = strangerSpec.choices.map(c => ({
+      label: c.label,
+      className: c.className,
+      onClick: c.action === 'accept' ? () => this.acceptFriendship() : () => this.declineFriendship()
+    }));
+    this.setBeat(interpolate(strangerSpec.text, { name: npc.name }), choices);
   }
 
   openCustomBeat(npc, text, choices) {
@@ -126,16 +140,22 @@ export class DialogueManager {
     if (!this.dialogueNpc) return;
     const npc = this.dialogueNpc;
     this.onFriendshipChange?.(npc.id, true);
-    this.setBeat(`Yay! ${npc.name} is your friend now.`, [
-      { label: 'Nice', className: 'primary', onClick: () => this.close() }
-    ]);
+    const spec = dialogueData.dialogues.accepted;
+    const choices = spec.choices.map(c => ({
+      ...c,
+      onClick: () => this.close()
+    }));
+    this.setBeat(interpolate(spec.text, { name: npc.name }), choices);
   }
 
   declineFriendship() {
     if (!this.dialogueNpc) return;
-    this.setBeat('No worries. Maybe next time.', [
-      { label: 'Bye', className: 'pill', onClick: () => this.close() }
-    ]);
+    const spec = dialogueData.dialogues.declined;
+    const choices = spec.choices.map(c => ({
+      ...c,
+      onClick: () => this.close()
+    }));
+    this.setBeat(spec.text, choices);
   }
 
   close() {

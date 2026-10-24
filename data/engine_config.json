@@ -1,0 +1,17 @@
+{
+  "timings": {
+    "playerStep": 0.18,
+    "npcStep": 0.28,
+    "companionStep": 0.22
+  },
+  "dimensions": {
+    "worldSize": 64,
+    "tileSize": 48,
+    "characterHeight": 48,
+    "companionHeight": 38
+  },
+  "crowd": {
+    "defaultCount": 10,
+    "maxNpcs": 40
+  }
+}

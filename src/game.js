@@ -9,12 +9,13 @@ import {
 import { occupantAtTile, reservationAtTile, canCollide } from './characters.js';
 import { directionForStep } from './facing.js';
 import { WorldRenderer, TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
+import engineConfig from '../data/engine_config.json' with { type: 'json' };
 
 export { TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
 
-export const PLAYER_STEP = 0.18;
-export const NPC_STEP = 0.28;
-export const COMPANION_STEP = 0.22;
+export const PLAYER_STEP = engineConfig.timings.playerStep;
+export const NPC_STEP = engineConfig.timings.npcStep;
+export const COMPANION_STEP = engineConfig.timings.companionStep;
 
 const MOVE_KEYS = new Map([
   ['w', { dx: 0, dy: -1, dir: 2 }],
@@ -131,8 +132,12 @@ export class Game {
   }
 
   makeCompanion(input, buddy) {
-    const x = clamp(Math.round(Number(input.x) ?? buddy.x), 0, WORLD_SIZE - 1);
-    const y = clamp(Math.round(Number(input.y) ?? buddy.y), 0, WORLD_SIZE - 1);
+    const defaultX = buddy?.x ?? 0;
+    const defaultY = buddy?.y ?? 0;
+    const rawX = Number.isFinite(Number(input.x)) ? Number(input.x) : defaultX;
+    const rawY = Number.isFinite(Number(input.y)) ? Number(input.y) : defaultY;
+    const x = clamp(Math.round(rawX), 0, WORLD_SIZE - 1);
+    const y = clamp(Math.round(rawY), 0, WORLD_SIZE - 1);
     return {
       id: input.id || `comp-${Math.random().toString(36).slice(2, 9)}`,
       name: input.name || 'Buddy',
@@ -231,12 +236,19 @@ export class Game {
     if (!this.terrain || !this.player) return null;
     const occupied = new Set([`${this.player.x},${this.player.y}`]);
     for (const npc of this.npcs) occupied.add(`${npc.x},${npc.y}`);
-    const spot = findOpenTile(this.terrain, { x: this.player.x, y: this.player.y }, occupied, 2);
+    for (const comp of this.companions) occupied.add(`${comp.x},${comp.y}`);
+    // Search for an open tile at a comfortable distance from the player (e.g. 6-10 tiles)
+    let spot = findOpenTile(this.terrain, { x: this.player.x, y: this.player.y }, occupied, 6);
+    if (!spot) {
+      spot = findOpenTile(this.terrain, { x: this.player.x, y: this.player.y }, occupied, 2);
+    }
     const npc = this.makeCharacter({ ...raw, x: spot.x, y: spot.y });
     this.npcs.push(npc);
+    occupied.add(`${npc.x},${npc.y}`);
 
     if (companionRaw) {
-      const comp = this.makeCompanion(companionRaw, npc);
+      const compSpot = findOpenTile(this.terrain, { x: npc.x, y: npc.y }, occupied, 1);
+      const comp = this.makeCompanion({ ...companionRaw, x: compSpot.x, y: compSpot.y }, npc);
       this.companions.push(comp);
     }
     return npc;

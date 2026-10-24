@@ -1224,6 +1224,127 @@ body.dialogue-open .topbar {
   }
 }
 
+/* Touch controls for mobile / touch devices */
+.touch-controls {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 180px;
+  pointer-events: none;
+  z-index: 85;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Visible on touch screens or narrow viewports (e.g. mobile/tablet) */
+@media (pointer: coarse), (max-width: 768px) {
+  body:not(.wizard-open) .touch-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px)) 20px;
+  }
+}
+
+.touch-dpad {
+  pointer-events: auto;
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+
+.touch-btn {
+  pointer-events: auto;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 700;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: transform 0.08s ease, background-color 0.08s ease;
+}
+
+.touch-btn:active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  transform: scale(0.92);
+}
+
+.touch-dpad .touch-btn {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+}
+
+.touch-dpad .touch-up {
+  top: 0;
+  left: 48px;
+}
+
+.touch-dpad .touch-down {
+  bottom: 0;
+  left: 48px;
+}
+
+.touch-dpad .touch-left {
+  top: 48px;
+  left: 0;
+}
+
+.touch-dpad .touch-right {
+  top: 48px;
+  right: 0;
+}
+
+.touch-actions {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.touch-action {
+  width: 58px;
+  height: 58px;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+
+.touch-action.touch-o {
+  background: rgba(40, 24, 24, 0.88);
+  border-color: rgba(231, 154, 154, 0.45);
+  color: #ffb4b4;
+}
+
+.touch-action.touch-o:active {
+  background: var(--danger);
+  color: #2a1111;
+}
+
+.touch-action.touch-x {
+  background: rgba(22, 40, 26, 0.88);
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
+
+.touch-action.touch-x:active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -14,13 +14,18 @@ and ES modules — there is no build step to serve it.
   your position, neighbours, and the visible area.
 - **Local character creator** — generate a DiceBear Voxel Art character from a seed and
   customise hair, outfit, glasses, beard, skin, and clothing colours.
-- **Companion buddies** — each player and neighbour gets a companion (using DiceBear **Clay**,
-  **Critters**, **Gaze**, **Sprouts**, or **Voxel bot**) that follows them around the park.
+- **Companion buddies** — each player and neighbour gets a companion following them around the
+  park: DiceBear styles (**Clay**, **Critters**, **Gaze**, **Sprouts**, **Voxel bot**), 10 Cube World
+  animal pets (**Dog**, **Cat**, **Chicken**, **Chick**, **Horse**, **Pig**, **Sheep**, **Wolf**,
+  **Raccoon**, **Hedgehog**), or 8 fantasy creatures (**Yeti**, **Demon**, **Goblin**, **Giant**,
+  **Skeleton**, **Skeleton Armor**, **Zombie**, **Wizard**).
 - **In-world Inventory & Mini-games** — each character carries an inventory with starter items
   like a bouncy ball and an oversized Tic-Tac-Toe board:
   - **Fetch**: Throw the ball onto the park grass and watch your companion fetch and return it.
   - **Tic-Tac-Toe**: Unfurl a giant 3×3 game mat directly onto park tiles. Walk onto squares and
     press `Enter` or `Space` to place your piece while playing with friends.
+- **Match Stats & Head-to-Head Records** — win, loss, and draw records are tracked across all
+  Tic-Tac-Toe matches with each park neighbour in the **🏆 Stats** panel.
 - **Neighbour generator** — roll a crowd, reroll individuals, and add more later.
 - **Tile-based collision** — no two characters can occupy the same tile, including while
   one of them is moving. Movement destinations are reserved.
@@ -73,31 +78,44 @@ Requires Node.js 20 or newer for the tooling; the game itself only needs a moder
 | Walk to a tile | Click the ground |
 | Inspect a character | Click them |
 | Talk | Walk into them |
-| Close a panel or dialogue | `Escape` |
-| Pause/start wandering | **Wander on/off** |
-| Add a neighbour | **+ Neighbour** |
-| View friends | **Friends n/m** |
-| Open bag / inventory | **🎒 Bag** |
+| Open Player HUD Menu | `Enter` (when no dialogue is active) |
+| Cycle HUD Tabs | `A` / `D` or `ArrowLeft` / `ArrowRight` (when menu open) |
+| Navigate Menu Rows | `W` / `S` or `ArrowUp` / `ArrowDown` (when menu open) |
+| Trigger Menu Action | `Enter` or `Space` (when menu item highlighted) |
+| Close panel or dialogue | `Escape` |
 | Throw / Action key | `Enter` or `Space` (place TTT mark or interact) |
 
 ## How it works
 
 ```text
-index.html              Canvas, HUD, setup wizard, dialogue, friend list
-css/app.css             Layout, panels, responsive rules
-data/entities.json      NPC names, player names, and personality vibe text
-src/main.js             App state, wizard, UI wiring, game loop lifecycle
-src/game.js             Camera, rendering loop, movement, collision, NPC AI
-src/dialogue.js         Dialogue manager for bump-to-talk conversations
-src/storage.js          Game state persistence and localStorage schema
-src/world.js            Seeded world generation, terrain encoding, pathfinding
-src/avatar.js           DiceBear recipes, local SVG generation, image cache
-src/characters.js       Pure tile-occupancy and reservation helpers
-src/facing.js           Direction mapping and left/right mirroring
-src/names.js            Name picker and vibe selectors backed by entities.json
-vendor-src/dicebear.js  Entry point for the vendored bundle
-vendor/dicebear-voxel.js Generated DiceBear + Voxel Art bundle (committed)
-test/                   Node test runner suites for pure logic
+index.html                     Canvas, HUD, setup wizard, dialogue, friend list
+css/app.css                    Layout, panels, responsive rules
+data/avatar_config.json        Avatar variants, palettes, and companion styles
+data/engine_config.json        Movement timings, tile dimensions, crowd limits
+data/items.json                Item catalog, starter loadouts, icons, actions
+data/dialogues.json            Dialogue templates and HUD action menu schemas
+data/entities.json             NPC names, player names, and personality vibe text
+data/cubeworld_pets.json       Pre-rendered offline 3D voxel sprite sheets
+src/main.js                    App state, event wiring, and save coordinator
+src/game.js                    Camera, movement physics, collisions, character registry
+src/renderer.js                Canvas WorldRenderer, viewport math, and minimap
+src/animation.js               Family animation profiles, locomotion, and cycles
+src/dialogue.js                Dialogue manager for bump-to-talk conversations
+src/storage.js                 Game state persistence, save migrations, and stats
+src/world.js                   Seeded terrain generation, terrain encoding, pathfinding
+src/avatar.js                  DiceBear recipes, local SVG generation, image cache
+src/characters.js              Pure tile-occupancy, exclusions, companion formatters
+src/facing.js                  Direction mapping and left/right mirroring
+src/names.js                   Name picker and vibe selectors backed by entities.json
+src/inventory.js               Item getters and starter inventory factory
+src/ui/panels.js               Consolidated 5-tab HUD player menu & keyboard nav
+src/ui/wizard.js               Character and park setup wizard
+src/games/fetch.js             Fetch mini-game: ball trajectory and companion fetch AI
+src/games/tic-tac-toe.js       In-world 3×3 Tic-Tac-Toe board on map tiles
+vendor-src/dicebear.js         Entry point for the vendored bundle
+vendor/dicebear-voxel.js       Generated DiceBear + Voxel Art bundle (committed)
+scripts/render_cubeworld_pets.py Standalone 3D software rasterizer for pet models
+test/                          Node test runner suites for pure logic
 ```
 
 ### Characters

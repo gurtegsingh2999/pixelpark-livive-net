@@ -6,6 +6,14 @@ const $ = id => document.getElementById(id);
 
 export const TABS = ['backpack', 'companions', 'friends', 'stats', 'debug'];
 
+const TAB_CONFIGS = {
+  backpack: { toggleId: 'inventory-toggle', panelId: 'inventory-panel', listId: 'inventory-list' },
+  companions: { toggleId: 'companion-toggle', panelId: 'companion-panel', listId: 'companion-details' },
+  friends: { toggleId: 'friends-toggle', panelId: 'friends-panel', listId: 'friend-list' },
+  stats: { toggleId: 'stats-toggle', panelId: 'stats-panel', listId: 'stats-list' },
+  debug: { toggleId: 'debug-toggle', panelId: 'debug-panel', listId: 'debug-actions' }
+};
+
 export class PanelsUI {
   constructor({
     getGame,
@@ -50,46 +58,39 @@ export class PanelsUI {
     return this.activeTab !== null;
   }
 
-  // --- Active Tab Switching & Highlighting ---
-
   setActiveTab(tabName) {
     if (!TABS.includes(tabName)) return;
     this.activeTab = tabName;
     this.lastActiveTab = tabName;
     this.focusedIndex = 0;
 
-    // Update active-tab styling on HUD buttons
-    $('inventory-toggle')?.classList.toggle('active-tab', tabName === 'backpack');
-    $('companion-toggle')?.classList.toggle('active-tab', tabName === 'companions');
-    $('friends-toggle')?.classList.toggle('active-tab', tabName === 'friends');
-    $('stats-toggle')?.classList.toggle('active-tab', tabName === 'stats');
-    $('debug-toggle')?.classList.toggle('active-tab', tabName === 'debug');
-
-    // Close other panels and open target
     this.closeCard();
-    if (tabName !== 'backpack') this.closeInventoryPanel();
-    if (tabName !== 'companions') this.closeCompanionPanel();
-    if (tabName !== 'friends') this.closeFriendsPanel();
-    if (tabName !== 'stats') this.closeStatsPanel();
-    if (tabName !== 'debug') this.closeDebugPanel();
+    for (const [tab, cfg] of Object.entries(TAB_CONFIGS)) {
+      const isActive = tab === tabName;
+      $(cfg.toggleId)?.classList.toggle('active-tab', isActive);
+      $(cfg.toggleId)?.setAttribute('aria-expanded', String(isActive));
+      const panel = $(cfg.panelId);
+      if (panel) panel.hidden = !isActive;
+    }
 
-    if (tabName === 'backpack') this.openInventoryPanel();
-    else if (tabName === 'companions') this.openCompanionPanel();
-    else if (tabName === 'friends') this.openFriendsPanel();
-    else if (tabName === 'stats') this.openStatsPanel();
-    else if (tabName === 'debug') this.openDebugPanel();
+    if (tabName === 'backpack') this.renderInventory();
+    else if (tabName === 'companions') this.renderCompanion();
+    else if (tabName === 'friends') { this.updateFriendsUI(); this.renderFriendList(); }
+    else if (tabName === 'stats') this.renderStats();
+    else if (tabName === 'debug') this.updateDebugUI();
 
     this.updateVerticalFocus();
   }
 
   closeMenu() {
     this.activeTab = null;
-    $('inventory-toggle')?.classList.remove('active-tab');
-    $('companion-toggle')?.classList.remove('active-tab');
-    $('friends-toggle')?.classList.remove('active-tab');
-    $('stats-toggle')?.classList.remove('active-tab');
-    $('debug-toggle')?.classList.remove('active-tab');
-    this.closeAllPanels();
+    for (const cfg of Object.values(TAB_CONFIGS)) {
+      $(cfg.toggleId)?.classList.remove('active-tab');
+      $(cfg.toggleId)?.setAttribute('aria-expanded', 'false');
+      const panel = $(cfg.panelId);
+      if (panel) panel.hidden = true;
+    }
+    this.closeCard();
   }
 
   cycleTab(direction) {
@@ -102,31 +103,28 @@ export class PanelsUI {
     this.setActiveTab(TABS[nextIndex]);
   }
 
-  // --- Inventory Panel ---
+  // --- Panel Shortcuts ---
+  closeInventoryPanel() { this.closeMenu(); }
+  openInventoryPanel() { this.setActiveTab('backpack'); }
+  toggleInventoryPanel() { this.activeTab === 'backpack' ? this.closeMenu() : this.setActiveTab('backpack'); }
 
-  closeInventoryPanel() {
-    const panel = $('inventory-panel');
-    if (panel) {
-      panel.hidden = true;
-      $('inventory-toggle')?.setAttribute('aria-expanded', 'false');
-    }
-  }
+  closeCompanionPanel() { this.closeMenu(); }
+  openCompanionPanel() { this.setActiveTab('companions'); }
+  toggleCompanionPanel() { this.activeTab === 'companions' ? this.closeMenu() : this.setActiveTab('companions'); }
 
-  openInventoryPanel() {
-    const panel = $('inventory-panel');
-    if (!panel) return;
-    panel.hidden = false;
-    $('inventory-toggle')?.setAttribute('aria-expanded', 'true');
-    this.renderInventory();
-  }
+  closeStatsPanel() { this.closeMenu(); }
+  openStatsPanel() { this.setActiveTab('stats'); }
+  toggleStatsPanel() { this.activeTab === 'stats' ? this.closeMenu() : this.setActiveTab('stats'); }
 
-  toggleInventoryPanel() {
-    if (this.activeTab === 'backpack') {
-      this.closeMenu();
-    } else {
-      this.setActiveTab('backpack');
-    }
-  }
+  closeFriendsPanel() { this.closeMenu(); }
+  openFriendsPanel() { this.setActiveTab('friends'); }
+  toggleFriendsPanel() { this.activeTab === 'friends' ? this.closeMenu() : this.setActiveTab('friends'); }
+
+  closeDebugPanel() { this.closeMenu(); }
+  openDebugPanel() { this.setActiveTab('debug'); }
+  toggleDebugPanel() { this.activeTab === 'debug' ? this.closeMenu() : this.setActiveTab('debug'); }
+
+  // --- Render Helpers ---
 
   renderInventory() {
     const list = $('inventory-list');
@@ -189,32 +187,6 @@ export class PanelsUI {
     list.append(fragment);
   }
 
-  // --- Companion Panel ---
-
-  closeCompanionPanel() {
-    const panel = $('companion-panel');
-    if (panel) {
-      panel.hidden = true;
-      $('companion-toggle')?.setAttribute('aria-expanded', 'false');
-    }
-  }
-
-  openCompanionPanel() {
-    const panel = $('companion-panel');
-    if (!panel) return;
-    panel.hidden = false;
-    $('companion-toggle')?.setAttribute('aria-expanded', 'true');
-    this.renderCompanion();
-  }
-
-  toggleCompanionPanel() {
-    if (this.activeTab === 'companions') {
-      this.closeMenu();
-    } else {
-      this.setActiveTab('companions');
-    }
-  }
-
   renderCompanion() {
     const list = $('companion-details');
     if (!list) return;
@@ -260,32 +232,6 @@ export class PanelsUI {
 
     row.append(image, copy);
     list.append(row);
-  }
-
-  // --- Stats Panel ---
-
-  closeStatsPanel() {
-    const panel = $('stats-panel');
-    if (panel) {
-      panel.hidden = true;
-      $('stats-toggle')?.setAttribute('aria-expanded', 'false');
-    }
-  }
-
-  openStatsPanel() {
-    const panel = $('stats-panel');
-    if (!panel) return;
-    panel.hidden = false;
-    $('stats-toggle')?.setAttribute('aria-expanded', 'true');
-    this.renderStats();
-  }
-
-  toggleStatsPanel() {
-    if (this.activeTab === 'stats') {
-      this.closeMenu();
-    } else {
-      this.setActiveTab('stats');
-    }
   }
 
   renderStats() {
@@ -347,33 +293,6 @@ export class PanelsUI {
       fragment.append(row);
     }
     list.append(fragment);
-  }
-
-  // --- Friends Panel ---
-
-  closeFriendsPanel() {
-    const panel = $('friends-panel');
-    if (panel) {
-      panel.hidden = true;
-      $('friends-toggle')?.setAttribute('aria-expanded', 'false');
-    }
-  }
-
-  openFriendsPanel() {
-    const panel = $('friends-panel');
-    if (!panel) return;
-    panel.hidden = false;
-    $('friends-toggle')?.setAttribute('aria-expanded', 'true');
-    this.updateFriendsUI();
-    this.renderFriendList();
-  }
-
-  toggleFriendsPanel() {
-    if (this.activeTab === 'friends') {
-      this.closeMenu();
-    } else {
-      this.setActiveTab('friends');
-    }
   }
 
   renderFriendList() {
@@ -442,32 +361,6 @@ export class PanelsUI {
     if ($('friends-panel') && !$('friends-panel').hidden) this.renderFriendList();
   }
 
-  // --- Debug Panel ---
-
-  closeDebugPanel() {
-    const panel = $('debug-panel');
-    if (panel) {
-      panel.hidden = true;
-      $('debug-toggle')?.setAttribute('aria-expanded', 'false');
-    }
-  }
-
-  openDebugPanel() {
-    const panel = $('debug-panel');
-    if (!panel) return;
-    panel.hidden = false;
-    $('debug-toggle')?.setAttribute('aria-expanded', 'true');
-    this.updateDebugUI();
-  }
-
-  toggleDebugPanel() {
-    if (this.activeTab === 'debug') {
-      this.closeMenu();
-    } else {
-      this.setActiveTab('debug');
-    }
-  }
-
   updateDebugUI() {
     const game = this.getGame();
     const wanderLabel = $('debug-wander-label');
@@ -483,11 +376,7 @@ export class PanelsUI {
       this.closeCard();
       return;
     }
-    this.closeFriendsPanel();
-    this.closeInventoryPanel();
-    this.closeStatsPanel();
-    this.closeCompanionPanel();
-    this.closeDebugPanel();
+    this.closeAllPanels();
     this.cardCharacter = character;
     const game = this.getGame();
     game?.select(character.isPlayer ? 'player' : character.id);
@@ -532,36 +421,22 @@ export class PanelsUI {
 
   closeAllPanels() {
     this.closeCard();
-    this.closeFriendsPanel();
-    this.closeInventoryPanel();
-    this.closeStatsPanel();
-    this.closeCompanionPanel();
-    this.closeDebugPanel();
+    for (const cfg of Object.values(TAB_CONFIGS)) {
+      const panel = $(cfg.panelId);
+      if (panel) panel.hidden = true;
+    }
   }
 
-  // --- Vertical Keyboard Navigation Inside Panels ---
+  // --- Vertical Navigation ---
 
   getActiveActionElements() {
-    let container = null;
-    if (this.activeTab === 'backpack') container = $('inventory-list');
-    else if (this.activeTab === 'companions') container = $('companion-details');
-    else if (this.activeTab === 'friends') container = $('friend-list');
-    else if (this.activeTab === 'stats') container = $('stats-list');
-    else if (this.activeTab === 'debug') container = $('debug-actions');
-
+    const cfg = TAB_CONFIGS[this.activeTab];
+    if (!cfg) return [];
+    const container = $(cfg.listId);
     if (!container) return [];
     const rows = Array.from(container.querySelectorAll('.friend-row'));
     if (rows.length) return rows;
-    const buttons = Array.from(container.querySelectorAll('button'));
-    return buttons;
-  }
-
-  removeVerticalFocus() {
-    this.focusedIndex = -1;
-    document.querySelectorAll('.friend-row.nav-focused').forEach(r => r.classList.remove('nav-focused'));
-    if (document.activeElement && document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
+    return Array.from(container.querySelectorAll('button'));
   }
 
   updateVerticalFocus() {
@@ -571,7 +446,6 @@ export class PanelsUI {
     if (this.focusedIndex < 0) this.focusedIndex = 0;
     if (this.focusedIndex >= items.length) this.focusedIndex = items.length - 1;
 
-    // Remove nav-focused styling from previous rows
     document.querySelectorAll('.friend-row.nav-focused').forEach(r => r.classList.remove('nav-focused'));
 
     const item = items[this.focusedIndex];
@@ -649,7 +523,6 @@ export class PanelsUI {
       }
 
       if (key === 'enter' || key === ' ') {
-        // If an item in panel is focused, click it
         event.preventDefault();
         event.stopPropagation();
         this.triggerFocusedAction();

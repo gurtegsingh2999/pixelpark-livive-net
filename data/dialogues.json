@@ -1,0 +1,66 @@
+{
+  "dialogues": {
+    "stranger": {
+      "text": "Hi, I'm {name}. Do you want to be friends?",
+      "choices": [
+        { "label": "Yes", "className": "primary", "action": "accept" },
+        { "label": "No", "className": "pill quiet", "action": "decline" }
+      ]
+    },
+    "friend": {
+      "text": "Hi, I'm {name}. Good to see you again!",
+      "playTttLabel": "Play Tic-Tac-Toe",
+      "closeLabel": "See you"
+    },
+    "accepted": {
+      "text": "Yay! {name} is your friend now.",
+      "choices": [
+        { "label": "Nice", "className": "primary", "action": "close" }
+      ]
+    },
+    "declined": {
+      "text": "No worries. Maybe next time.",
+      "choices": [
+        { "label": "Bye", "className": "pill", "action": "close" }
+      ]
+    },
+    "companion": {
+      "choices": [
+        { "label": "Nice buddy!", "className": "primary", "action": "close" }
+      ]
+    },
+    "ttt": {
+      "win": "Great game! You won that round. Want to play again?",
+      "loss": "Haha, gotcha! Good match. Want another round?",
+      "draw": "That was a tight draw! Want a rematch?",
+      "abandonPrompt": "{name}: Are you walking away? Abandon the Tic-Tac-Toe game and pack up?",
+      "abandonChoices": [
+        { "label": "Abandon & Pack up", "className": "danger", "action": "abandon" },
+        { "label": "Keep Playing", "className": "pill", "action": "keep_playing" }
+      ],
+      "endChoices": [
+        { "label": "Play again", "className": "primary", "action": "play_again" },
+        { "label": "Pack up", "className": "pill quiet", "action": "pack_up" }
+      ]
+    }
+  },
+  "playerMenu": {
+    "title": "What would you like to do?",
+    "items": [
+      { "id": "backpack", "label": "🎒 Backpack", "className": "primary" },
+      { "id": "companions", "label": "🐾 Companions", "className": "pill" },
+      { "id": "friends", "label": "👥 Friends", "className": "pill" },
+      { "id": "stats", "label": "🏆 Stats", "className": "pill" },
+      { "id": "debug", "label": "⚙️ Debug", "className": "pill" },
+      { "id": "close", "label": "Close", "className": "pill quiet" }
+    ]
+  },
+  "debugMenu": {
+    "title": "Debug Options",
+    "items": [
+      { "id": "addNeighbour", "label": "+ Neighbour", "className": "primary" },
+      { "id": "newPark", "label": "New Park", "className": "danger" },
+      { "id": "back", "label": "← Back", "className": "pill quiet" }
+    ]
+  }
+}

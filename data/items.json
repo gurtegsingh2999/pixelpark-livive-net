@@ -1,0 +1,28 @@
+{
+  "ballColors": ["#e63946", "#f4a261", "#2a9d8f", "#457b9d", "#6d597a", "#b5838d", "#e9c46a", "#3d405b"],
+  "catalog": {
+    "ball": {
+      "id": "ball",
+      "name": "Bouncy Ball",
+      "action": "throw",
+      "description": "Throw for your companion to fetch.",
+      "defaultColor": "#e63946"
+    },
+    "tic-tac-toe": {
+      "id": "tic-tac-toe",
+      "name": "Tic-Tac-Toe",
+      "action": "unfurl",
+      "description": "Unfurl a 3x3 play mat on the grass.",
+      "icon": "🎲"
+    }
+  },
+  "starter": [
+    {
+      "id": "ball",
+      "randomize": { "field": "color", "from": "ballColors" }
+    },
+    {
+      "id": "tic-tac-toe"
+    }
+  ]
+}

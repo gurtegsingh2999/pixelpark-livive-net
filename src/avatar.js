@@ -2,31 +2,17 @@ import { createVoxelAvatar, createCompanionAvatar } from '../vendor/dicebear-vox
 import { makeSeed } from './world.js';
 import { getAnimationProfile } from './animation.js';
 import petSprites from '../data/cubeworld_pets.json' with { type: 'json' };
+import avatarConfig from '../data/avatar_config.json' with { type: 'json' };
 
-export const CUBEWORLD_PETS = ['dog', 'cat', 'chicken', 'chick', 'horse', 'pig', 'sheep', 'wolf', 'raccoon', 'hedgehog'];
-export const CUBEWORLD_CREATURES = ['yeti', 'demon', 'goblin', 'giant', 'skeleton', 'skeleton-armor', 'zombie', 'wizard'];
-export const COMPANION_STYLES = ['clay', 'critters', 'gaze', 'sprouts', 'voxel-bot', ...CUBEWORLD_PETS, ...CUBEWORLD_CREATURES];
+export const CUBEWORLD_PETS = avatarConfig.cubeWorldPets;
+export const CUBEWORLD_CREATURES = avatarConfig.cubeWorldCreatures;
+export const COMPANION_STYLES = [...avatarConfig.companionBaseStyles, ...CUBEWORLD_PETS, ...CUBEWORLD_CREATURES];
 
-export const TOP_VARIANTS = [
-  'afro', 'animalEars', 'beanie', 'bob', 'bowl', 'braids', 'bunnyEars', 'buns',
-  'cap', 'curly', 'halfShaved', 'longStraight', 'longWavy', 'mohawk', 'partedLong',
-  'ponytail', 'short', 'shoulderLength', 'sideSwept', 'spiky', 'twinTails'
-];
-
-export const OUTFIT_VARIANTS = [
-  'checker', 'coat', 'dress', 'hoodie', 'jacket', 'overalls', 'plain', 'stripes', 'suit', 'tie'
-];
-
-export const GLASSES_VARIANTS = ['cat', 'round', 'shades', 'square', 'visor'];
-export const BEARD_VARIANTS = ['full', 'goatee', 'mustache', 'stubble'];
-
-export const COLOR_PALETTES = {
-  skin: ['#f4d7bd', '#edc2a0', '#d9a279', '#c08457', '#9b6238', '#74452a', '#4f2d1c'],
-  hair: ['#241a14', '#4a2f20', '#7a4a2a', '#b47a3f', '#d9ad62', '#e8d8b0', '#c7c7c7', '#8a3a2a', '#3f4a63', '#b34f6b'],
-  shirt: ['#f76707', '#e8590c', '#12b886', '#0ca678', '#1c7ed6', '#3b5bdb', '#7048e8', '#d6336c', '#f59f00', '#495057', '#f1f3f5'],
-  pants: ['#2f4160', '#343a40', '#495057', '#6741d9', '#1864ab', '#087f5b', '#846358', '#212529'],
-  shoes: ['#6741d9', '#e8590c', '#2f4160', '#f1f3f5', '#c92a2a', '#1864ab', '#212529']
-};
+export const TOP_VARIANTS = avatarConfig.topVariants;
+export const OUTFIT_VARIANTS = avatarConfig.outfitVariants;
+export const GLASSES_VARIANTS = avatarConfig.glassesVariants;
+export const BEARD_VARIANTS = avatarConfig.beardVariants;
+export const COLOR_PALETTES = avatarConfig.colorPalettes;
 
 export const LOOK_KEYS = ['top', 'outfit', 'glasses', 'beard', 'skin', 'hair', 'shirt', 'pants', 'shoes'];
 

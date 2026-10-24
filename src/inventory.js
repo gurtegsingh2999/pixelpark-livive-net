@@ -1,22 +1,22 @@
-export const BALL_COLORS = [
-  '#ff4757', '#2ed573', '#1e90ff', '#ffa502', '#9b59b6', '#ff6b81', '#00d2d3'
-];
+import itemConfig from '../data/items.json' with { type: 'json' };
+
+export const BALL_COLORS = itemConfig.ballColors;
+export const ITEM_CATALOG = itemConfig.catalog;
+
+export function getItemDefinition(id) {
+  return ITEM_CATALOG[id] || null;
+}
 
 export function createStarterInventory() {
-  const ballColor = BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)];
-  return [
-    {
-      id: 'ball',
-      name: 'Bouncy Ball',
-      description: 'Throw for your companion to fetch.',
-      icon: '🎾',
-      color: ballColor
-    },
-    {
-      id: 'tic-tac-toe',
-      name: 'Oversized Tic-Tac-Toe',
-      description: 'Unfurl a giant game board on the grass.',
-      icon: '🎯'
+  return itemConfig.starter.map(spec => {
+    const base = ITEM_CATALOG[spec.id];
+    const item = { ...base };
+    if (spec.randomize) {
+      const pool = itemConfig[spec.randomize.from];
+      if (Array.isArray(pool) && pool.length) {
+        item[spec.randomize.field] = pool[Math.floor(Math.random() * pool.length)];
+      }
     }
-  ];
+    return item;
+  });
 }

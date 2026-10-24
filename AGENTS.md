@@ -31,23 +31,31 @@ commit `node_modules/`.
 
 | Path | Responsibility |
 | --- | --- |
+| `data/avatar_config.json` | Avatar variants, color palettes, and companion style list |
+| `data/engine_config.json` | Movement timings, tile dimensions, and crowd parameters |
+| `data/items.json` | Item catalog, starter loadouts, metadata, and default icons |
+| `data/dialogues.json` | Dialogue templates, prompts with `{name}` interpolation, and menu schemas |
 | `data/entities.json` | NPC names, player names, and vibes/flavour text |
-| `src/main.js` | App state, wizard, HUD, dialogue and friend-list UI |
-| `src/dialogue.js` | Dialogue manager for conversations and friendship updates |
-| `src/storage.js` | LocalStorage serialization and schema management |
-| `src/game.js` | Canvas renderer, camera, movement, collision checks, wander AI |
+| `data/cubeworld_pets.json` | Pre-rendered offline sprite sheets for Cube World animal pets and creatures |
+| `src/main.js` | App state, dialogue triggers, save loop, and event wiring |
+| `src/game.js` | Movement physics, tile collision, camera, character registry, wander AI |
+| `src/renderer.js` | Canvas WorldRenderer, viewport math, layer sorting, and minimap |
+| `src/animation.js` | Family animation profiles, procedural locomotion, and cycle frame evaluators |
+| `src/dialogue.js` | Dialogue manager for bump-to-talk conversations and friendship updates |
+| `src/storage.js` | LocalStorage serialization, schema migrations, and match statistics |
 | `src/world.js` | Seeded terrain generation, terrain encoding, BFS pathfinding, open-tile search |
-| `src/avatar.js` | DiceBear recipes/options, local SVG generation and image caching |
-| `src/characters.js` | Pure occupancy/reservation helpers used by collision logic |
+| `src/avatar.js` | Recipe builder, DiceBear options, local SVG generation, image cache |
+| `src/characters.js` | Pure occupancy, collision exclusions, and companion info formatters |
 | `src/facing.js` | Four-direction mapping and Voxel Art left/right mirroring |
 | `src/names.js` | Name picker and vibe generator backed by `data/entities.json` |
-| `src/inventory.js` | Starter inventories and item definitions (ball, tic-tac-toe) |
+| `src/inventory.js` | Starter inventory factory and item definition getters |
+| `src/ui/panels.js` | Unified 5-tab HUD player menu, keyboard navigation, and side panels |
+| `src/ui/wizard.js` | Park setup wizard, draft creation, and avatar customizer |
 | `src/games/fetch.js` | Fetch mini-game: ball trajectory and companion fetch AI |
 | `src/games/tic-tac-toe.js` | In-world 3×3 Tic-Tac-Toe board on map tiles with turn-taking |
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
 | `scripts/render_cubeworld_pets.py` | Standalone 3D software rasterizer generating `data/cubeworld_pets.json` |
-| `data/cubeworld_pets.json` | Pre-rendered offline sprite sheets for Cube World animal pets and creatures |
 | `test/` | `node:test` suites for pure logic |
 
 Keep `src/game.js` import-safe in Node: no DOM access at module top level, only inside the
@@ -73,8 +81,13 @@ extractable.
 - **Save compatibility.** Saves live under `playpark.save.v1`. When changing the shape,
   either keep reading older saves or bump the version and handle migration. Persist
   `friends` as NPC IDs, not indexes.
-- **No custom character sprites.** This PoC deliberately uses DiceBear Voxel Art for the
-  player and NPCs. Terrain is procedural and drawn from code.
+- **Character recipes vs. companion sprite sheets.** Player and humanoid NPCs deliberately
+  use DiceBear Voxel Art recipes `{ seed, look }` rendered offline to local SVGs. Companion
+  animals and creatures use pre-rendered 3D software-rasterized voxel sprite sheets in
+  `data/cubeworld_pets.json`. No runtime external API requests are permitted for either.
+- **Data-driven configuration.** Constants, avatar variants, items, engine parameters,
+  and dialogue scripts belong in `data/*.json` files. Prefer updating external JSON data
+  over hardcoding constants in JavaScript modules.
 
 ## Testing policy
 
