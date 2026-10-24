@@ -609,9 +609,16 @@ export class Game {
           }
           return;
         } else {
-          // If destination set but no path, calculate path
+          // If destination set but no path or stuck, calculate path
           const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination);
-          comp.path = repath.length ? repath : [];
+          if (repath.length) {
+            comp.path = repath;
+          } else {
+            // If completely unpathable, place them on the destination tile
+            comp.x = comp.stagedDestination.x;
+            comp.y = comp.stagedDestination.y;
+            comp.stagedDestination = null;
+          }
         }
       }
       return;

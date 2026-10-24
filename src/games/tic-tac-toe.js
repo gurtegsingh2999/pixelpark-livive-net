@@ -88,11 +88,14 @@ export class TicTacToeMiniGame {
       }
       opponent.direction = 3; // Facing left toward board
 
-      // Opponent's companion stands exactly 1 tile above or below the standing position of the OPPONENT:
-      // Opponent stands at (sidelineX, sidelineY). Try 1 tile above (sidelineY - 1), or 1 tile below (sidelineY + 1).
+      // Opponent's companion stands on the tile to the right of tile 3 (sidelineY - 1)
+      // or to the right of tile 9 (sidelineY + 1):
+      // Sideline row is middle (to right of tile 6). So Y-1 is to right of top row (tile 3),
+      // and Y+1 is to right of bottom row (tile 9).
       const opponentComp = this.game.getCompanionFor(opponent.id);
       if (opponentComp) {
         opponentComp.fetchTarget = null;
+        opponentComp.moving = false;
         let oppCompY = sidelineY - 1;
         if (!isWalkable(typeAt(this.game.terrain, sidelineX, oppCompY))) {
           oppCompY = sidelineY + 1;
@@ -104,11 +107,11 @@ export class TicTacToeMiniGame {
       }
     }
 
-    // Player's companion stands strictly next to the PLAYER (not the opponent!):
-    // Player stands at (player.x, player.y). Try 1 tile above or below the player.
+    // Player's companion stands strictly next to the PLAYER:
     const playerComp = this.game.getCompanionFor(player.id);
     if (playerComp) {
       playerComp.fetchTarget = null;
+      playerComp.moving = false;
       let pCompY = player.y - 1;
       if (!isWalkable(typeAt(this.game.terrain, player.x, pCompY))) {
         pCompY = player.y + 1;
