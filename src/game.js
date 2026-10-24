@@ -360,6 +360,14 @@ export class Game {
 
     const bumpNpc = occupantAtTile(this.npcs, nx, ny);
     if (bumpNpc) {
+      // Do not trigger dialogue if the NPC is actively participating in a mini-game
+      const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
+      if (isMiniGameActive && bumpNpc.inMiniGame) {
+        this.heldKeys = [];
+        this.player.path = [];
+        this.destination = null;
+        return false;
+      }
       this.openDialogueWith(bumpNpc);
       return false;
     }
