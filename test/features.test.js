@@ -3,16 +3,19 @@ import assert from 'node:assert/strict';
 import { createStarterInventory, BALL_COLORS } from '../src/inventory.js';
 import { createCompanionRecipe, canonicalRecipe, COMPANION_STYLES } from '../src/avatar.js';
 import { TicTacToeMiniGame } from '../src/games/tic-tac-toe.js';
+import { CheckersMiniGame } from '../src/games/checkers.js';
 import { FetchMiniGame } from '../src/games/fetch.js';
 import { recordGameResult, loadStats } from '../src/storage.js';
 
-test('createStarterInventory yields ball and tic-tac-toe', () => {
+test('createStarterInventory yields ball, tic-tac-toe, and checkers', () => {
   const inv = createStarterInventory();
-  assert.equal(inv.length, 2);
+  assert.equal(inv.length, 3);
   const ball = inv.find(i => i.id === 'ball');
   const ttt = inv.find(i => i.id === 'tic-tac-toe');
+  const checkers = inv.find(i => i.id === 'checkers');
   assert.ok(ball);
   assert.ok(ttt);
+  assert.ok(checkers);
   assert.ok(BALL_COLORS.includes(ball.color));
 });
 
@@ -107,4 +110,50 @@ test('TicTacToeMiniGame handles keep playing without looping abandon prompt', ()
   ttt.update(0.016);
   assert.equal(ttt.returningToBoard, false);
   assert.equal(promptCount, 1);
+});
+
+test('CheckersMiniGame initializes, detects moves, captures and kings', () => {
+  const checkers = new CheckersMiniGame();
+  const pieces = checkers.createInitialPieces();
+  assert.equal(pieces.length, 64);
+
+  // Red (player) pieces start at bottom (rows 5, 6, 7), 12 pieces total
+  const playerPieces = pieces.filter(p => p?.side === 'player');
+  const opponentPieces = pieces.filter(p => p?.side === 'opponent');
+  assert.equal(playerPieces.length, 12);
+  assert.equal(opponentPieces.length, 12);
+
+  // Legal opening moves for player from row 5
+  const moves = checkers.getLegalMoves('player', pieces);
+  assert.ok(moves.length > 0);
+  assert.ok(moves.every(m => m.from.row === 5));
+
+  // Test jump capture and king promotion logic
+  const customPieces = Array(64).fill(null);
+  // Player piece at row 2, col 1 (index 17)
+  customPieces[2 * 8 + 1] = { side: 'player', king: false };
+  // Opponent piece at row 1, col 2 (index 10)
+  customPieces[1 * 8 + 2] = { side: 'opponent', king: false };
+
+  checkers.activeBoard = {
+    originX: 10,
+    originY: 10,
+    pieces: customPieces,
+    turn: 'player',
+    status: 'playing',
+    multiJumpFrom: null
+  };
+
+  const jumpMoves = checkers.getLegalMoves('player', customPieces);
+  assert.equal(jumpMoves.length, 1);
+  assert.equal(jumpMoves[0].to.row, 0);
+  assert.equal(jumpMoves[0].to.col, 3);
+  assert.ok(jumpMoves[0].jumped);
+
+  const res = checkers.applyMove(jumpMoves[0]);
+  assert.equal(res.completed, true);
+  // King promotion should happen at row 0
+  assert.equal(checkers.activeBoard.pieces[0 * 8 + 3].king, true);
+  // Jumped piece removed
+  assert.equal(checkers.activeBoard.pieces[1 * 8 + 2], null);
 });

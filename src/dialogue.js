@@ -72,7 +72,7 @@ export class DialogueManager {
     }, { capture: true });
   }
 
-  open(character, isFriend, { canPlayTicTacToe = false } = {}) {
+  open(character, isFriend, { canPlayTicTacToe = false, canPlayCheckers = false } = {}) {
     if (!character || !this.container) return;
     this.dialogueNpc = character;
     document.body.classList.add('dialogue-open');
@@ -102,6 +102,17 @@ export class DialogueManager {
             const opponent = this.dialogueNpc;
             this.close();
             this.onPlayGame?.('tic-tac-toe', opponent);
+          }
+        });
+      }
+      if (canPlayCheckers) {
+        choices.push({
+          label: dialogueData.dialogues.friend.playCheckersLabel || 'Play Checkers',
+          className: choices.length ? 'pill' : 'primary',
+          onClick: () => {
+            const opponent = this.dialogueNpc;
+            this.close();
+            this.onPlayGame?.('checkers', opponent);
           }
         });
       }

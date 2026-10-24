@@ -20,6 +20,7 @@ import { DialogueManager } from './dialogue.js';
 import { createStarterInventory } from './inventory.js';
 import { FetchMiniGame } from './games/fetch.js';
 import { TicTacToeMiniGame } from './games/tic-tac-toe.js';
+import { CheckersMiniGame } from './games/checkers.js';
 import { SetupWizard } from './ui/wizard.js';
 import { PanelsUI } from './ui/panels.js';
 import engineConfig from '../data/engine_config.json' with { type: 'json' };
@@ -36,6 +37,7 @@ let draft = null;
 let dialogue = null;
 let fetchGame = null;
 let tttGame = null;
+let checkersGame = null;
 let wizard = null;
 let panels = null;
 let friends = new Set();
@@ -81,6 +83,8 @@ function onDialogueEnded() {
 function onPlayGame(type, opponent) {
   if (type === 'tic-tac-toe') {
     tttGame?.unfurlBoard(opponent);
+  } else if (type === 'checkers') {
+    checkersGame?.unfurlBoard(opponent);
   }
 }
 
@@ -90,7 +94,8 @@ function openDialogue(npc) {
   game.select(npc.id);
   const isFriend = friends.has(npc.id);
   const hasTTT = Boolean(game?.player?.inventory?.some(i => i.id === 'tic-tac-toe'));
-  dialogue.open(npc, isFriend, { canPlayTicTacToe: isFriend && hasTTT });
+  const hasCheckers = Boolean(game?.player?.inventory?.some(i => i.id === 'checkers'));
+  dialogue.open(npc, isFriend, { canPlayTicTacToe: isFriend && hasTTT, canPlayCheckers: isFriend && hasCheckers });
 }
 
 function makeDraft() {
@@ -190,6 +195,44 @@ function onTTTGameEnd(winner, opponent) {
   dialogue.openCustomBeat(opponent, winText, choices);
 }
 
+function onCheckersGameEnd(winner, opponent) {
+  if (!opponent) return;
+  const checkersSpecs = dialogueData.dialogues.checkers;
+  let outcome = 'draw';
+  if (winner === 'player') outcome = 'win';
+  else if (winner === 'opponent') outcome = 'loss';
+
+  let winText = winner === 'player' ? checkersSpecs.win : (winner === 'opponent' ? checkersSpecs.loss : checkersSpecs.draw);
+
+  // Grant rewards if outcome rolled
+  const reward = rollReward(game, 'checkers', outcome);
+  if (reward) {
+    const notices = applyReward(game, reward);
+    if (notices.length) {
+      winText += `\nRewards: ${notices.join(' · ')}`;
+      showToast(`Rewards: ${notices.join(' · ')}`);
+      if (winner === 'player') {
+        game.triggerCheer('player');
+      }
+    }
+  }
+
+  const choices = checkersSpecs.endChoices.map(c => ({
+    label: c.label,
+    className: c.className,
+    onClick: () => {
+      dialogue.close();
+      if (c.action === 'play_again') {
+        checkersGame?.resetRound();
+      } else {
+        checkersGame?.packUpBoard();
+      }
+    }
+  }));
+
+  dialogue.openCustomBeat(opponent, winText, choices);
+}
+
 function openPlayerMenu() {
   if (!game?.player) return;
   const player = game.player;
@@ -244,6 +287,10 @@ function handleActionKey(character) {
     tttGame.handleAction(character);
     return;
   }
+  if (checkersGame?.isOpen()) {
+    checkersGame.handleAction(character);
+    return;
+  }
   if (dialogue?.isOpen() || (Date.now() - (dialogue?.justClosedAt || 0) < 300)) {
     return;
   }
@@ -265,6 +312,22 @@ function onAbandonPrompt(onConfirm, onCancel) {
   const oppName = opponent?.name || 'Your friend';
   const promptText = dialogueData.dialogues.ttt.abandonPrompt.replace('{name}', oppName);
   const choices = dialogueData.dialogues.ttt.abandonChoices.map(c => ({
+    label: c.label,
+    className: c.className,
+    onClick: () => {
+      dialogue.close();
+      if (c.action === 'abandon') onConfirm();
+      else onCancel();
+    }
+  }));
+  dialogue.openCustomBeat(opponent, promptText, choices);
+}
+
+function onCheckersAbandonPrompt(onConfirm, onCancel) {
+  const opponent = checkersGame?.activeBoard?.opponent;
+  const oppName = opponent?.name || 'Your friend';
+  const promptText = dialogueData.dialogues.checkers.abandonPrompt.replace('{name}', oppName);
+  const choices = dialogueData.dialogues.checkers.abandonChoices.map(c => ({
     label: c.label,
     className: c.className,
     onClick: () => {
@@ -307,8 +370,15 @@ function ensureGame() {
       onGameEnd: onTTTGameEnd,
       onAbandonPrompt
     });
+    checkersGame = new CheckersMiniGame({
+      game,
+      onToast: showToast,
+      onGameEnd: onCheckersGameEnd,
+      onAbandonPrompt: onCheckersAbandonPrompt
+    });
     game.registerMiniGame(fetchGame);
     game.registerMiniGame(tttGame);
+    game.registerMiniGame(checkersGame);
   }
   return game;
 }
@@ -760,6 +830,9 @@ function boot() {
     onUnfurlTTT: opponent => tttGame?.unfurlBoard(opponent),
     onPackUpTTT: () => tttGame?.packUpBoard(),
     isTTTOpen: () => tttGame?.isOpen(),
+    onUnfurlCheckers: opponent => checkersGame?.unfurlBoard(opponent),
+    onPackUpCheckers: () => checkersGame?.packUpBoard(),
+    isCheckersOpen: () => checkersGame?.isOpen(),
     onSave: saveNow,
     onSelect: character => panels?.showCard(character),
     onAddNeighbour: addNeighbour,
@@ -814,5 +887,6 @@ window.playPark = {
   get game() { return game; },
   get draft() { return draft; },
   get fetchGame() { return fetchGame; },
-  get tttGame() { return tttGame; }
+  get tttGame() { return tttGame; },
+  get checkersGame() { return checkersGame; }
 };

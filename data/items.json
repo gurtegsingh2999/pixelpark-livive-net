@@ -14,6 +14,13 @@
       "action": "unfurl",
       "description": "Unfurl a 3x3 play mat on the grass.",
       "icon": "🎲"
+    },
+    "checkers": {
+      "id": "checkers",
+      "name": "Checkerboard",
+      "action": "unfurl",
+      "description": "Unfurl an 8x8 draughts board on the grass.",
+      "icon": "🏁"
     }
   },
   "starter": [
@@ -23,6 +30,9 @@
     },
     {
       "id": "tic-tac-toe"
+    },
+    {
+      "id": "checkers"
     }
   ]
 }

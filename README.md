@@ -112,6 +112,7 @@ src/ui/panels.js               Consolidated 5-tab HUD player menu & keyboard nav
 src/ui/wizard.js               Character and park setup wizard
 src/games/fetch.js             Fetch mini-game: ball trajectory and companion fetch AI
 src/games/tic-tac-toe.js       In-world 3×3 Tic-Tac-Toe board on map tiles
+src/games/checkers.js          In-world 8×8 Checkers/Draughts board on map tiles
 vendor-src/dicebear.js         Entry point for the vendored bundle
 vendor/dicebear-voxel.js       Generated DiceBear + Voxel Art bundle (committed)
 scripts/render_cubeworld_pets.py Standalone 3D software rasterizer for pet models

@@ -13,6 +13,19 @@
         "coins": 1
       }
     },
+    "checkers": {
+      "win": {
+        "coins": 25,
+        "bonusRollChance": 0.6,
+        "bonusLootTable": "checkers_win_loot"
+      },
+      "draw": {
+        "coins": 8
+      },
+      "loss": {
+        "coins": 3
+      }
+    },
     "fetch": {
       "rewardCoins": 2
     }
@@ -22,6 +35,11 @@
       { "type": "companion", "weight": 4 },
       { "type": "item", "weight": 3, "pool": ["ball", "tic-tac-toe"] },
       { "type": "coins", "weight": 5, "amount": 15 }
+    ],
+    "checkers_win_loot": [
+      { "type": "companion", "weight": 5 },
+      { "type": "item", "weight": 2, "pool": ["ball", "checkers"] },
+      { "type": "coins", "weight": 5, "amount": 30 }
     ]
   }
 }

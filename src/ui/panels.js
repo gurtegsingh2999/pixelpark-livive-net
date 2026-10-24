@@ -22,6 +22,9 @@ export class PanelsUI {
     onUnfurlTTT,
     onPackUpTTT,
     isTTTOpen,
+    onUnfurlCheckers,
+    onPackUpCheckers,
+    isCheckersOpen,
     onSave,
     onSelect,
     onAddNeighbour,
@@ -34,6 +37,9 @@ export class PanelsUI {
     this.onUnfurlTTT = onUnfurlTTT;
     this.onPackUpTTT = onPackUpTTT;
     this.isTTTOpen = isTTTOpen;
+    this.onUnfurlCheckers = onUnfurlCheckers;
+    this.onPackUpCheckers = onPackUpCheckers;
+    this.isCheckersOpen = isCheckersOpen;
     this.onSave = onSave;
     this.onSelect = onSelect;
     this.onAddNeighbour = onAddNeighbour;
@@ -191,6 +197,14 @@ export class PanelsUI {
           } else {
             const friend = this.friendNpcs()[0] || game.npcs[0];
             this.onUnfurlTTT?.(friend);
+          }
+        } else if (item.id === 'checkers') {
+          this.closeMenu();
+          if (this.isCheckersOpen?.()) {
+            this.onPackUpCheckers?.();
+          } else {
+            const friend = this.friendNpcs()[0] || game.npcs[0];
+            this.onUnfurlCheckers?.(friend);
           }
         }
       });

@@ -10,6 +10,7 @@
     "friend": {
       "text": "Hi, I'm {name}. Good to see you again!",
       "playTttLabel": "Play Tic-Tac-Toe",
+      "playCheckersLabel": "Play Checkers",
       "closeLabel": "See you"
     },
     "accepted": {
@@ -34,6 +35,20 @@
       "loss": "Haha, gotcha! Good match. Want another round?",
       "draw": "That was a tight draw! Want a rematch?",
       "abandonPrompt": "{name}: Are you walking away? Abandon the Tic-Tac-Toe game and pack up?",
+      "abandonChoices": [
+        { "label": "Abandon & Pack up", "className": "danger", "action": "abandon" },
+        { "label": "Keep Playing", "className": "pill", "action": "keep_playing" }
+      ],
+      "endChoices": [
+        { "label": "Play again", "className": "primary", "action": "play_again" },
+        { "label": "Pack up", "className": "pill quiet", "action": "pack_up" }
+      ]
+    },
+    "checkers": {
+      "win": "Impressive strategy! You won the game of Checkers. Want another round?",
+      "loss": "King me! Good game of Checkers. Rematch?",
+      "draw": "No more legal moves! That checkers match is a draw. Rematch?",
+      "abandonPrompt": "{name}: Leaving the board? Abandon the Checkers match and pack up?",
       "abandonChoices": [
         { "label": "Abandon & Pack up", "className": "danger", "action": "abandon" },
         { "label": "Keep Playing", "className": "pill", "action": "keep_playing" }

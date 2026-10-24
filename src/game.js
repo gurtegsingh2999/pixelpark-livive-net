@@ -526,8 +526,9 @@ export class Game {
     const blocked = new Set();
     for (const game of this.miniGames) {
       if (game.isOpen?.() && game.activeBoard?.originX !== undefined) {
-        for (let by = 0; by < 3; by++) {
-          for (let bx = 0; bx < 3; bx++) {
+        const size = game.boardSize || 3;
+        for (let by = 0; by < size; by++) {
+          for (let bx = 0; bx < size; bx++) {
             blocked.add(`${game.activeBoard.originX + bx},${game.activeBoard.originY + by}`);
           }
         }

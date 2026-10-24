@@ -53,6 +53,7 @@ commit `node_modules/`.
 | `src/ui/wizard.js` | Park setup wizard, draft creation, and avatar customizer |
 | `src/games/fetch.js` | Fetch mini-game: ball trajectory and companion fetch AI |
 | `src/games/tic-tac-toe.js` | In-world 3×3 Tic-Tac-Toe board on map tiles with turn-taking |
+| `src/games/checkers.js` | In-world 8×8 Checkers/Draughts board on map tiles with turn-taking |
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
 | `scripts/render_cubeworld_pets.py` | Standalone 3D software rasterizer generating `data/cubeworld_pets.json` |
