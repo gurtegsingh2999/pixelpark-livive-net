@@ -19,12 +19,12 @@
           <small id="world-meta">64 × 64</small>
         </div>
       </div>
-      <div class="topbar-actions">
-        <button id="inventory-toggle" class="pill" type="button" aria-expanded="false" aria-controls="inventory-panel" aria-label="Backpack" title="Backpack"><span class="icon">🎒</span></button>
-        <button id="companion-toggle" class="pill" type="button" aria-label="Companions" title="Companions"><span class="icon">🐾</span></button>
-        <button id="friends-toggle" class="pill friends-pill" type="button" aria-expanded="false" aria-controls="friends-panel" aria-label="Friends" title="Friends"><span class="icon">👥</span><span id="friends-count" class="friend-count">0/0</span></button>
-        <button id="stats-toggle" class="pill" type="button" aria-expanded="false" aria-controls="stats-panel" aria-label="Stats" title="Stats"><span class="icon">🏆</span></button>
-        <button id="debug-toggle" class="pill" type="button" aria-label="Debug" title="Debug"><span class="icon">⚙️</span></button>
+      <div class="topbar-actions" id="topbar-actions">
+        <button id="inventory-toggle" class="pill" type="button" aria-expanded="false" aria-controls="inventory-panel" aria-label="Backpack" title="Backpack"><span class="icon">🎒</span><span class="label">Backpack</span></button>
+        <button id="companion-toggle" class="pill" type="button" aria-expanded="false" aria-controls="companion-panel" aria-label="Companions" title="Companions"><span class="icon">🐾</span><span class="label">Companions</span></button>
+        <button id="friends-toggle" class="pill friends-pill" type="button" aria-expanded="false" aria-controls="friends-panel" aria-label="Friends" title="Friends"><span class="icon">👥</span><span class="label">Friends</span><span id="friends-count" class="friend-count">0/0</span></button>
+        <button id="stats-toggle" class="pill" type="button" aria-expanded="false" aria-controls="stats-panel" aria-label="Stats" title="Stats"><span class="icon">🏆</span><span class="label">Stats</span></button>
+        <button id="debug-toggle" class="pill" type="button" aria-expanded="false" aria-controls="debug-panel" aria-label="Debug" title="Debug"><span class="icon">⚙️</span><span class="label">Debug</span></button>
       </div>
     </header>
 
@@ -50,6 +50,15 @@
       <div id="inventory-list" class="friend-list" role="list"></div>
     </aside>
 
+    <aside id="companion-panel" class="friends-panel" hidden aria-label="Companion panel">
+      <div class="panel-heading">
+        <strong>Your Companion</strong>
+        <button id="companion-close" class="icon-button" type="button" aria-label="Close companion panel">×</button>
+      </div>
+      <p id="companion-summary" class="panel-note">Your faithful follower in the park.</p>
+      <div id="companion-details" class="friend-list" role="list"></div>
+    </aside>
+
     <aside id="stats-panel" class="friends-panel" hidden aria-label="Game Stats and Records">
       <div class="panel-heading">
         <strong>Park Records & Stats</strong>
@@ -66,6 +75,40 @@
       </div>
       <p id="friends-summary" class="panel-note"></p>
       <div id="friend-list" class="friend-list" role="list"></div>
+    </aside>
+
+    <aside id="debug-panel" class="friends-panel" hidden aria-label="Debug Options panel">
+      <div class="panel-heading">
+        <strong>Debug Options</strong>
+        <button id="debug-close" class="icon-button" type="button" aria-label="Close debug panel">×</button>
+      </div>
+      <p class="panel-note">Park configuration and testing tools.</p>
+      <div id="debug-actions" class="friend-list" role="list">
+        <div class="friend-row" role="listitem">
+          <span style="font-size:24px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">🚶</span>
+          <div>
+            <strong>Wander Behavior</strong>
+            <small id="debug-wander-label">Toggle autonomous NPC wandering</small>
+          </div>
+          <button id="debug-wander-btn" class="pill" type="button">Pause</button>
+        </div>
+        <div class="friend-row" role="listitem">
+          <span style="font-size:24px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">➕</span>
+          <div>
+            <strong>Add Neighbour</strong>
+            <small>Spawn a new neighbour with a companion</small>
+          </div>
+          <button id="debug-add-npc" class="pill primary" type="button">+ Neighbour</button>
+        </div>
+        <div class="friend-row" role="listitem">
+          <span style="font-size:24px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">🌲</span>
+          <div>
+            <strong>New Park</strong>
+            <small>Reset save and generate a fresh park</small>
+          </div>
+          <button id="debug-new-park" class="pill danger" type="button">New Park</button>
+        </div>
+      </div>
     </aside>
 
     <section id="dialogue" class="dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="dialogue-name">

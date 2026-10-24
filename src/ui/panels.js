@@ -1,7 +1,10 @@
 import { avatarDataUrl, bindAnimatedAvatar } from '../avatar.js';
 import { loadStats } from '../storage.js';
+import { formatCompanionInfo } from '../characters.js';
 
 const $ = id => document.getElementById(id);
+
+export const TABS = ['backpack', 'companions', 'friends', 'stats', 'debug'];
 
 export class PanelsUI {
   constructor({
@@ -12,7 +15,10 @@ export class PanelsUI {
     onPackUpTTT,
     isTTTOpen,
     onSave,
-    onSelect
+    onSelect,
+    onAddNeighbour,
+    onNewPark,
+    onToggleWander
   }) {
     this.getGame = getGame;
     this.getFriends = getFriends;
@@ -22,8 +28,15 @@ export class PanelsUI {
     this.isTTTOpen = isTTTOpen;
     this.onSave = onSave;
     this.onSelect = onSelect;
+    this.onAddNeighbour = onAddNeighbour;
+    this.onNewPark = onNewPark;
+    this.onToggleWander = onToggleWander;
     this.cardCharacter = null;
+    this.activeTab = null;
+    this.lastActiveTab = 'backpack';
+    this.focusedIndex = 0;
     this.bindEvents();
+    this.bindKeyboardNav();
   }
 
   friendNpcs() {
@@ -31,6 +44,62 @@ export class PanelsUI {
     if (!game) return [];
     const friends = this.getFriends();
     return game.npcs.filter(npc => friends.has(npc.id));
+  }
+
+  isMenuOpen() {
+    return this.activeTab !== null;
+  }
+
+  // --- Active Tab Switching & Highlighting ---
+
+  setActiveTab(tabName) {
+    if (!TABS.includes(tabName)) return;
+    this.activeTab = tabName;
+    this.lastActiveTab = tabName;
+    this.focusedIndex = 0;
+
+    // Update active-tab styling on HUD buttons
+    $('inventory-toggle')?.classList.toggle('active-tab', tabName === 'backpack');
+    $('companion-toggle')?.classList.toggle('active-tab', tabName === 'companions');
+    $('friends-toggle')?.classList.toggle('active-tab', tabName === 'friends');
+    $('stats-toggle')?.classList.toggle('active-tab', tabName === 'stats');
+    $('debug-toggle')?.classList.toggle('active-tab', tabName === 'debug');
+
+    // Close other panels and open target
+    this.closeCard();
+    if (tabName !== 'backpack') this.closeInventoryPanel();
+    if (tabName !== 'companions') this.closeCompanionPanel();
+    if (tabName !== 'friends') this.closeFriendsPanel();
+    if (tabName !== 'stats') this.closeStatsPanel();
+    if (tabName !== 'debug') this.closeDebugPanel();
+
+    if (tabName === 'backpack') this.openInventoryPanel();
+    else if (tabName === 'companions') this.openCompanionPanel();
+    else if (tabName === 'friends') this.openFriendsPanel();
+    else if (tabName === 'stats') this.openStatsPanel();
+    else if (tabName === 'debug') this.openDebugPanel();
+
+    this.updateVerticalFocus();
+  }
+
+  closeMenu() {
+    this.activeTab = null;
+    $('inventory-toggle')?.classList.remove('active-tab');
+    $('companion-toggle')?.classList.remove('active-tab');
+    $('friends-toggle')?.classList.remove('active-tab');
+    $('stats-toggle')?.classList.remove('active-tab');
+    $('debug-toggle')?.classList.remove('active-tab');
+    this.closeAllPanels();
+  }
+
+  cycleTab(direction) {
+    if (!this.activeTab) {
+      this.setActiveTab(this.lastActiveTab || 'backpack');
+      return;
+    }
+    const currentIndex = TABS.indexOf(this.activeTab);
+    const nextIndex = (currentIndex + direction + TABS.length) % TABS.length;
+    this.setActiveTab(TABS[nextIndex]);
   }
 
   // --- Inventory Panel ---
@@ -43,20 +112,20 @@ export class PanelsUI {
     }
   }
 
-  toggleInventoryPanel() {
+  openInventoryPanel() {
     const panel = $('inventory-panel');
     if (!panel) return;
-    const opening = panel.hidden;
-    if (!opening) {
-      this.closeInventoryPanel();
-      return;
-    }
-    this.closeCard();
-    this.closeFriendsPanel();
-    this.closeStatsPanel();
     panel.hidden = false;
     $('inventory-toggle')?.setAttribute('aria-expanded', 'true');
     this.renderInventory();
+  }
+
+  toggleInventoryPanel() {
+    if (this.activeTab === 'backpack') {
+      this.closeMenu();
+    } else {
+      this.setActiveTab('backpack');
+    }
   }
 
   renderInventory() {
@@ -105,13 +174,13 @@ export class PanelsUI {
       if (item.id === 'ball') {
         action.textContent = 'Throw';
         action.addEventListener('click', () => {
-          this.closeInventoryPanel();
+          this.closeMenu();
           this.onThrowBall?.({ color: item.color });
         });
       } else if (item.id === 'tic-tac-toe') {
         action.textContent = this.isTTTOpen?.() ? 'Pack up' : 'Unfurl';
         action.addEventListener('click', () => {
-          this.closeInventoryPanel();
+          this.closeMenu();
           if (this.isTTTOpen?.()) {
             this.onPackUpTTT?.();
           } else {
@@ -127,6 +196,82 @@ export class PanelsUI {
     list.append(fragment);
   }
 
+  // --- Companion Panel ---
+
+  closeCompanionPanel() {
+    const panel = $('companion-panel');
+    if (panel) {
+      panel.hidden = true;
+      $('companion-toggle')?.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  openCompanionPanel() {
+    const panel = $('companion-panel');
+    if (!panel) return;
+    panel.hidden = false;
+    $('companion-toggle')?.setAttribute('aria-expanded', 'true');
+    this.renderCompanion();
+  }
+
+  toggleCompanionPanel() {
+    if (this.activeTab === 'companions') {
+      this.closeMenu();
+    } else {
+      this.setActiveTab('companions');
+    }
+  }
+
+  renderCompanion() {
+    const list = $('companion-details');
+    if (!list) return;
+    list.replaceChildren();
+
+    const game = this.getGame();
+    const companion = game?.companions?.find(c => c.buddyId === 'player');
+    const summary = $('companion-summary');
+
+    if (!companion) {
+      if (summary) summary.textContent = 'No companions currently following you.';
+      const empty = document.createElement('p');
+      empty.className = 'friend-empty';
+      empty.textContent = 'No companion following you right now.';
+      list.append(empty);
+      return;
+    }
+
+    const info = formatCompanionInfo(companion);
+    if (summary) {
+      summary.textContent = `${companion.name} the ${info.type} · ${info.class}`;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'friend-row';
+    row.setAttribute('role', 'listitem');
+
+    const image = document.createElement('img');
+    bindAnimatedAvatar(image, companion.recipe, 0);
+    image.alt = companion.name;
+
+    const copy = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = `${companion.name} (${info.type})`;
+    const sub = document.createElement('small');
+    sub.textContent = `${info.class} · Following you`;
+    copy.append(name, sub);
+
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'pill';
+    action.textContent = 'Inspect';
+    action.addEventListener('click', () => {
+      this.showCard(companion);
+    });
+
+    row.append(image, copy, action);
+    list.append(row);
+  }
+
   // --- Stats Panel ---
 
   closeStatsPanel() {
@@ -137,20 +282,20 @@ export class PanelsUI {
     }
   }
 
-  toggleStatsPanel() {
+  openStatsPanel() {
     const panel = $('stats-panel');
     if (!panel) return;
-    const opening = panel.hidden;
-    if (!opening) {
-      this.closeStatsPanel();
-      return;
-    }
-    this.closeCard();
-    this.closeFriendsPanel();
-    this.closeInventoryPanel();
     panel.hidden = false;
     $('stats-toggle')?.setAttribute('aria-expanded', 'true');
     this.renderStats();
+  }
+
+  toggleStatsPanel() {
+    if (this.activeTab === 'stats') {
+      this.closeMenu();
+    } else {
+      this.setActiveTab('stats');
+    }
   }
 
   renderStats() {
@@ -217,28 +362,33 @@ export class PanelsUI {
   // --- Friends Panel ---
 
   closeFriendsPanel() {
-    $('friends-panel').hidden = true;
-    $('friends-toggle').setAttribute('aria-expanded', 'false');
+    const panel = $('friends-panel');
+    if (panel) {
+      panel.hidden = true;
+      $('friends-toggle')?.setAttribute('aria-expanded', 'false');
+    }
   }
 
-  toggleFriendsPanel() {
+  openFriendsPanel() {
     const panel = $('friends-panel');
-    const opening = panel.hidden;
-    if (!opening) {
-      this.closeFriendsPanel();
-      return;
-    }
-    this.closeCard();
-    this.closeInventoryPanel();
-    this.closeStatsPanel();
+    if (!panel) return;
     panel.hidden = false;
-    $('friends-toggle').setAttribute('aria-expanded', 'true');
+    $('friends-toggle')?.setAttribute('aria-expanded', 'true');
     this.updateFriendsUI();
     this.renderFriendList();
   }
 
+  toggleFriendsPanel() {
+    if (this.activeTab === 'friends') {
+      this.closeMenu();
+    } else {
+      this.setActiveTab('friends');
+    }
+  }
+
   renderFriendList() {
     const list = $('friend-list');
+    if (!list) return;
     list.replaceChildren();
     const npcs = this.friendNpcs();
 
@@ -267,7 +417,15 @@ export class PanelsUI {
       vibe.textContent = npc.vibe || 'Park friend';
       copy.append(name, vibe);
 
-      row.append(image, copy);
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'pill';
+      action.textContent = 'Card';
+      action.addEventListener('click', () => {
+        this.showCard(npc);
+      });
+
+      row.append(image, copy, action);
       fragment.append(row);
     }
     list.append(fragment);
@@ -284,13 +442,55 @@ export class PanelsUI {
 
     const total = game?.npcs.length || 0;
     const count = friends.size;
-    $('friends-count').textContent = `${count}/${total}`;
-    $('friends-toggle').setAttribute('aria-label', `Friend list: ${count} of ${total} neighbours`);
-    $('friends-summary').textContent = count
-      ? `${count} of ${total} neighbour${total === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} your friend.`
-      : 'No friends yet. Bump into a neighbour and say yes.';
+    const countEl = $('friends-count');
+    if (countEl) countEl.textContent = `${count}/${total}`;
+    $('friends-toggle')?.setAttribute('aria-label', `Friend list: ${count} of ${total} neighbours`);
+    const summary = $('friends-summary');
+    if (summary) {
+      summary.textContent = count
+        ? `${count} of ${total} neighbour${total === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} your friend.`
+        : 'No friends yet. Bump into a neighbour and say yes.';
+    }
 
-    if (!$('friends-panel').hidden) this.renderFriendList();
+    if ($('friends-panel') && !$('friends-panel').hidden) this.renderFriendList();
+  }
+
+  // --- Debug Panel ---
+
+  closeDebugPanel() {
+    const panel = $('debug-panel');
+    if (panel) {
+      panel.hidden = true;
+      $('debug-toggle')?.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  openDebugPanel() {
+    const panel = $('debug-panel');
+    if (!panel) return;
+    panel.hidden = false;
+    $('debug-toggle')?.setAttribute('aria-expanded', 'true');
+    this.updateDebugUI();
+  }
+
+  toggleDebugPanel() {
+    if (this.activeTab === 'debug') {
+      this.closeMenu();
+    } else {
+      this.setActiveTab('debug');
+    }
+  }
+
+  updateDebugUI() {
+    const game = this.getGame();
+    const wanderBtn = $('debug-wander-btn');
+    const wanderLabel = $('debug-wander-label');
+    if (wanderBtn && game) {
+      wanderBtn.textContent = game.wander ? 'Pause' : 'Resume';
+      if (wanderLabel) {
+        wanderLabel.textContent = game.wander ? 'Neighbours are currently wandering' : 'Neighbours are staying put';
+      }
+    }
   }
 
   // --- Character Inspection Card ---
@@ -303,6 +503,8 @@ export class PanelsUI {
     this.closeFriendsPanel();
     this.closeInventoryPanel();
     this.closeStatsPanel();
+    this.closeCompanionPanel();
+    this.closeDebugPanel();
     this.cardCharacter = character;
     const game = this.getGame();
     game?.select(character.isPlayer ? 'player' : character.id);
@@ -330,15 +532,17 @@ export class PanelsUI {
 
   closeCard() {
     this.cardCharacter = null;
-    $('npc-card').hidden = true;
+    if ($('npc-card')) $('npc-card').hidden = true;
     this.getGame()?.select(null);
   }
 
   isAnyPanelOpen() {
     return Boolean(
       ($('inventory-panel') && !$('inventory-panel').hidden) ||
+      ($('companion-panel') && !$('companion-panel').hidden) ||
       ($('stats-panel') && !$('stats-panel').hidden) ||
       ($('friends-panel') && !$('friends-panel').hidden) ||
+      ($('debug-panel') && !$('debug-panel').hidden) ||
       ($('npc-card') && !$('npc-card').hidden)
     );
   }
@@ -348,16 +552,148 @@ export class PanelsUI {
     this.closeFriendsPanel();
     this.closeInventoryPanel();
     this.closeStatsPanel();
+    this.closeCompanionPanel();
+    this.closeDebugPanel();
+  }
+
+  // --- Vertical Keyboard Navigation Inside Panels ---
+
+  getActiveActionElements() {
+    let container = null;
+    if (this.activeTab === 'backpack') container = $('inventory-list');
+    else if (this.activeTab === 'companions') container = $('companion-details');
+    else if (this.activeTab === 'friends') container = $('friend-list');
+    else if (this.activeTab === 'stats') container = $('stats-list');
+    else if (this.activeTab === 'debug') container = $('debug-actions');
+
+    if (!container) return [];
+    const buttons = Array.from(container.querySelectorAll('button'));
+    if (buttons.length) return buttons;
+    const rows = Array.from(container.querySelectorAll('.friend-row'));
+    return rows;
+  }
+
+  updateVerticalFocus() {
+    const items = this.getActiveActionElements();
+    if (!items.length) return;
+
+    if (this.focusedIndex < 0) this.focusedIndex = 0;
+    if (this.focusedIndex >= items.length) this.focusedIndex = items.length - 1;
+
+    // Remove nav-focused styling from previous rows
+    document.querySelectorAll('.friend-row.nav-focused').forEach(r => r.classList.remove('nav-focused'));
+
+    const item = items[this.focusedIndex];
+    if (item instanceof HTMLButtonElement) {
+      item.focus({ preventScroll: false });
+      item.closest('.friend-row')?.classList.add('nav-focused');
+      item.closest('.friend-row')?.scrollIntoView?.({ block: 'nearest' });
+    } else if (item) {
+      item.classList.add('nav-focused');
+      item.scrollIntoView?.({ block: 'nearest' });
+    }
+  }
+
+  navigateVertical(direction) {
+    const items = this.getActiveActionElements();
+    if (!items.length) return;
+    this.focusedIndex = (this.focusedIndex + direction + items.length) % items.length;
+    this.updateVerticalFocus();
+  }
+
+  triggerFocusedAction() {
+    const items = this.getActiveActionElements();
+    if (!items.length) return;
+    const item = items[this.focusedIndex];
+    if (item instanceof HTMLButtonElement) {
+      item.click();
+    } else if (item) {
+      const btn = item.querySelector('button');
+      if (btn) btn.click();
+    }
+  }
+
+  bindKeyboardNav() {
+    window.addEventListener('keydown', event => {
+      if (!this.isMenuOpen()) return;
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select')) return;
+
+      const key = event.key.toLowerCase();
+
+      if (key === 'escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeMenu();
+        return;
+      }
+
+      if (key === 'arrowleft' || key === 'a') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.cycleTab(-1);
+        return;
+      }
+
+      if (key === 'arrowright' || key === 'd') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.cycleTab(1);
+        return;
+      }
+
+      if (key === 'arrowup' || key === 'w') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.navigateVertical(-1);
+        return;
+      }
+
+      if (key === 'arrowdown' || key === 's') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.navigateVertical(1);
+        return;
+      }
+
+      if (key === 'enter' || key === ' ') {
+        // If an item in panel is focused, click it
+        event.preventDefault();
+        event.stopPropagation();
+        this.triggerFocusedAction();
+        return;
+      }
+    }, { capture: true });
   }
 
   bindEvents() {
     $('inventory-toggle')?.addEventListener('click', () => this.toggleInventoryPanel());
-    $('inventory-close')?.addEventListener('click', () => this.closeInventoryPanel());
+    $('inventory-close')?.addEventListener('click', () => this.closeMenu());
+
+    $('companion-toggle')?.addEventListener('click', () => this.toggleCompanionPanel());
+    $('companion-close')?.addEventListener('click', () => this.closeMenu());
+
     $('stats-toggle')?.addEventListener('click', () => this.toggleStatsPanel());
-    $('stats-close')?.addEventListener('click', () => this.closeStatsPanel());
+    $('stats-close')?.addEventListener('click', () => this.closeMenu());
 
     $('friends-toggle')?.addEventListener('click', () => this.toggleFriendsPanel());
-    $('friends-close')?.addEventListener('click', () => this.closeFriendsPanel());
+    $('friends-close')?.addEventListener('click', () => this.closeMenu());
+
+    $('debug-toggle')?.addEventListener('click', () => this.toggleDebugPanel());
+    $('debug-close')?.addEventListener('click', () => this.closeMenu());
+
+    $('debug-wander-btn')?.addEventListener('click', () => {
+      this.onToggleWander?.();
+      this.updateDebugUI();
+    });
+
+    $('debug-add-npc')?.addEventListener('click', () => {
+      this.onAddNeighbour?.();
+    });
+
+    $('debug-new-park')?.addEventListener('click', () => {
+      this.onNewPark?.();
+    });
+
     $('npc-close')?.addEventListener('click', () => this.closeCard());
   }
 }

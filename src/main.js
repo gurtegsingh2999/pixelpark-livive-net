@@ -280,10 +280,17 @@ function handleActionKey(character) {
   if (dialogue?.isOpen()) {
     return;
   }
-  if (panels?.isAnyPanelOpen?.()) {
+  if (panels?.isMenuOpen?.()) {
+    // Already in menu: trigger focused action
+    panels.triggerFocusedAction();
     return;
   }
-  openPlayerMenu();
+  if (panels?.isAnyPanelOpen?.()) {
+    panels.closeAllPanels();
+    return;
+  }
+  // Open top-right HUD player menu
+  panels?.setActiveTab(panels.lastActiveTab || 'backpack');
 }
 
 function onAbandonPrompt(onConfirm, onCancel) {
@@ -733,7 +740,16 @@ function boot() {
     onPackUpTTT: () => tttGame?.packUpBoard(),
     isTTTOpen: () => tttGame?.isOpen(),
     onSave: saveNow,
-    onSelect: character => panels?.showCard(character)
+    onSelect: character => panels?.showCard(character),
+    onAddNeighbour: addNeighbour,
+    onNewPark: () => {
+      if (!window.confirm('Start a new park? Your current park and neighbours will be replaced.')) return;
+      panels?.closeMenu();
+      clearSave();
+      entered = false;
+      openWizard({ fresh: true });
+    },
+    onToggleWander: toggleWander
   });
 
   wizard = new SetupWizard({

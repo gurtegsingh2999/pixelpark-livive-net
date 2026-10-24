@@ -160,6 +160,34 @@ body.wizard-open canvas#world {
   line-height: 1;
 }
 
+.topbar-actions .pill .label {
+  display: none;
+}
+
+.topbar-actions .pill.active-tab {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+  color: var(--accent-ink);
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(182, 227, 124, 0.4);
+}
+
+.topbar-actions .pill.active-tab .label {
+  display: inline;
+}
+
+.topbar-actions .pill.active-tab .friend-count {
+  background: rgba(16, 26, 15, 0.2);
+  color: var(--accent-ink);
+}
+
+.friend-row.nav-focused,
+.friend-row:focus-within {
+  border-color: var(--accent);
+  background: rgba(35, 55, 40, 0.85);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
