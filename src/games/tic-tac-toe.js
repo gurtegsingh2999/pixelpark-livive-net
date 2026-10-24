@@ -182,6 +182,14 @@ export class TicTacToeMiniGame {
     }
   }
 
+  blocksStep(character, nx, ny) {
+    if (!this.isOpen() || !this.isTileOnBoard(nx, ny)) return false;
+    const isPlayer = character === this.game.player;
+    const isOpponent = character === this.activeBoard?.opponent;
+    const isStagingCompanion = character.isCompanion && Boolean(character.stagedDestination);
+    return !isPlayer && !isOpponent && !isStagingCompanion;
+  }
+
   isTileOnBoard(x, y) {
     if (!this.activeBoard) return false;
     const { originX, originY } = this.activeBoard;
@@ -371,7 +379,7 @@ export class TicTacToeMiniGame {
       }
     }
 
-    // Opponent thinking and walking flow
+    // Opponent thinking, walking, and arrival flow
     if (board.status === 'playing' && board.turn === 'opponent') {
       const opponent = board.opponent;
       if (!opponent) return;
@@ -380,6 +388,11 @@ export class TicTacToeMiniGame {
         board.thinkingTimer -= dt;
         if (board.thinkingTimer <= 0) {
           this.executeOpponentMove();
+        }
+      } else if (board.steppingTo) {
+        if (opponent.x === board.steppingTo.x && opponent.y === board.steppingTo.y && !opponent.moving) {
+          board.steppingTo = null;
+          this.handleAction(opponent);
         }
       }
     }
@@ -409,11 +422,7 @@ export class TicTacToeMiniGame {
     const targetX = board.originX + col;
     const targetY = board.originY + row;
 
-    // Clear any previous interval or lingering destination
-    if (this._arrivalInterval) {
-      clearInterval(this._arrivalInterval);
-      this._arrivalInterval = null;
-    }
+    board.steppingTo = { x: targetX, y: targetY };
 
     // Pathfind opponent from their current position (whether on sideline or walking back) to target cell
     const currentOppX = opponent.moving ? opponent.toX : opponent.x;
@@ -422,21 +431,10 @@ export class TicTacToeMiniGame {
 
     if (path.length) {
       opponent.path = path;
-      this._arrivalInterval = setInterval(() => {
-        if (!this.activeBoard || this.activeBoard.turn !== 'opponent') {
-          clearInterval(this._arrivalInterval);
-          this._arrivalInterval = null;
-          return;
-        }
-        if (opponent.x === targetX && opponent.y === targetY && !opponent.moving) {
-          clearInterval(this._arrivalInterval);
-          this._arrivalInterval = null;
-          this.handleAction(opponent);
-        }
-      }, 50);
     } else {
       opponent.x = targetX;
       opponent.y = targetY;
+      board.steppingTo = null;
       this.handleAction(opponent);
     }
   }

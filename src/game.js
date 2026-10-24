@@ -1,25 +1,20 @@
 import {
   WORLD_SIZE,
-  TILE_TYPES,
-  TERRAIN_COLORS,
   DIRS,
   isWalkable,
   typeAt,
   findOpenTile,
-  findPath,
-  mulberry32,
-  hashString
+  findPath
 } from './world.js';
-import { drawAvatar, getAvatarImage, loadAvatarImage } from './avatar.js';
 import { occupantAtTile, reservationAtTile } from './characters.js';
-import { directionForStep, shouldMirror } from './facing.js';
+import { directionForStep } from './facing.js';
+import { WorldRenderer, TILE } from './renderer.js';
 
-const TILE = 48;
-const CHARACTER_HEIGHT = TILE * 1.72;
-const COMPANION_HEIGHT = TILE * 1.05;
-const PLAYER_STEP = 0.17;
-const NPC_STEP = 0.38;
-const COMPANION_STEP = 0.22;
+export { TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
+
+export const PLAYER_STEP = 0.18;
+export const NPC_STEP = 0.28;
+export const COMPANION_STEP = 0.22;
 
 const MOVE_KEYS = new Map([
   ['w', { dx: 0, dy: -1, dir: 2 }],
@@ -36,90 +31,10 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function makeTileTextures() {
-  const textures = {};
-  const scale = 2;
-  const size = TILE * scale;
-
-  for (const type of TILE_TYPES) {
-    textures[type] = [];
-    for (let variant = 0; variant < 3; variant++) {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const random = mulberry32(hashString(`${type}:${variant}:playpark`));
-      ctx.fillStyle = TERRAIN_COLORS[type];
-      ctx.fillRect(0, 0, size, size);
-
-      if (type === 'grass' || type === 'field') {
-        for (let i = 0; i < 26; i++) {
-          const x = random() * size;
-          const y = random() * size;
-          if (type === 'grass') {
-            ctx.fillStyle = random() > 0.5 ? 'rgba(192, 223, 120, 0.32)' : 'rgba(30, 65, 43, 0.32)';
-            ctx.fillRect(x, y, 2 + random() * 2, 2 + random() * 2);
-          } else {
-            ctx.fillStyle = random() > 0.55 ? 'rgba(216, 202, 102, 0.55)' : 'rgba(72, 94, 36, 0.3)';
-            ctx.fillRect(x, y, 2 + random() * 2, 2 + random() * 2);
-          }
-        }
-      }
-
-      if (type === 'dirt') {
-        for (let i = 0; i < 20; i++) {
-          ctx.fillStyle = random() > 0.5 ? 'rgba(84, 60, 52, 0.28)' : 'rgba(196, 154, 108, 0.26)';
-          ctx.fillRect(random() * size, random() * size, 2 + random() * 3, 2 + random() * 2);
-        }
-      }
-
-      if (type === 'sand') {
-        for (let i = 0; i < 24; i++) {
-          ctx.fillStyle = random() > 0.5 ? 'rgba(255, 240, 168, 0.32)' : 'rgba(140, 112, 64, 0.2)';
-          ctx.fillRect(random() * size, random() * size, 2, 2);
-        }
-      }
-
-      if (type === 'water') {
-        for (let i = 0; i < 7; i++) {
-          const x = random() * size;
-          const y = random() * size;
-          ctx.fillStyle = 'rgba(213, 245, 255, 0.28)';
-          ctx.fillRect(x, y, 10 + random() * 18, 2);
-          ctx.fillStyle = 'rgba(18, 74, 104, 0.24)';
-          ctx.fillRect(x + 8, y + 5, 8 + random() * 10, 2);
-        }
-      }
-
-      if (type === 'field') {
-        ctx.strokeStyle = 'rgba(213, 184, 91, 0.48)';
-        ctx.lineWidth = 2;
-        for (let i = 1; i < 5; i++) {
-          const y = (size * i) / 5;
-          ctx.beginPath();
-          ctx.moveTo(size * 0.08, y);
-          ctx.lineTo(size * 0.92, y);
-          ctx.stroke();
-        }
-        ctx.fillStyle = 'rgba(216, 202, 102, 0.5)';
-        for (let i = 0; i < 4; i++) ctx.fillRect(size * (0.15 + i * 0.2), size * 0.17, 2, size * 0.66);
-      }
-
-      ctx.strokeStyle = 'rgba(232, 245, 223, 0.06)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(1, 1, size - 2, size - 2);
-      textures[type].push(canvas);
-    }
-  }
-
-  return textures;
-}
-
 export class Game {
   constructor({ canvas, minimap, onSelect, onToast, onDialogue, onActionKey } = {}) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.minimap = minimap;
-    this.mctx = minimap.getContext('2d');
+    this.renderer = new WorldRenderer({ canvas, minimap });
     this.onSelect = onSelect || (() => {});
     this.onToast = onToast || (() => {});
     this.onDialogue = onDialogue || (() => {});
@@ -146,8 +61,6 @@ export class Game {
     this.destination = null;
     this.pointer = { x: -1, y: -1 };
     this.heldKeys = [];
-    this.tileTextures = makeTileTextures();
-    this.minimapBase = null;
     this.width = 0;
     this.height = 0;
     this.dpr = 1;
@@ -187,7 +100,7 @@ export class Game {
     this.height = window.innerHeight;
     this.canvas.width = Math.round(this.width * this.dpr);
     this.canvas.height = Math.round(this.height * this.dpr);
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.renderer.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.cameraSnap = true;
   }
 
@@ -277,7 +190,7 @@ export class Game {
     this.previewFocus = this.player
       ? { x: this.player.x, y: this.player.y }
       : { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
-    this.buildMinimapBase();
+    this.renderer.buildMinimapBase(terrain);
     this.cameraSnap = true;
   }
 
@@ -293,7 +206,7 @@ export class Game {
     this.paused = false;
     this.destination = null;
     this.previewFocus = focus || { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
-    this.buildMinimapBase();
+    this.renderer.buildMinimapBase(terrain);
     this.cameraSnap = true;
   }
 
@@ -360,7 +273,6 @@ export class Game {
 
     const bumpNpc = occupantAtTile(this.npcs, nx, ny);
     if (bumpNpc) {
-      // Do not trigger dialogue if the NPC is actively participating in a mini-game
       const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
       if (isMiniGameActive && bumpNpc.inMiniGame) {
         this.heldKeys = [];
@@ -400,21 +312,6 @@ export class Game {
     this.dialogueNpc = null;
     this.paused = false;
     this.interactive = true;
-  }
-
-  buildMinimapBase() {
-    if (!this.terrain) return;
-    const scale = 4;
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = WORLD_SIZE * scale;
-    const ctx = canvas.getContext('2d');
-    for (let y = 0; y < WORLD_SIZE; y++) {
-      for (let x = 0; x < WORLD_SIZE; x++) {
-        ctx.fillStyle = TERRAIN_COLORS[this.terrain[y][x]];
-        ctx.fillRect(x * scale, y * scale, scale, scale);
-      }
-    }
-    this.minimapBase = canvas;
   }
 
   cameraFocus() {
@@ -460,14 +357,9 @@ export class Game {
     const ny = character.y + dy;
     if (!isWalkable(typeAt(this.terrain, nx, ny))) return false;
 
-    // Disallow characters who are NOT active participants in Tic-Tac-Toe from stepping onto the board.
-    // Allow the opponent's companion to walk through during setup if they are actively navigating to their staged spectator position.
-    const tttGame = this.miniGames.find(m => m.isTileOnBoard && m.isOpen && m.isOpen());
-    if (tttGame && tttGame.isTileOnBoard(nx, ny)) {
-      const isPlayer = character === this.player;
-      const isOpponent = character === tttGame.activeBoard?.opponent;
-      const isStagingCompanion = character.isCompanion && Boolean(character.stagedDestination);
-      if (!isPlayer && !isOpponent && !isStagingCompanion) {
+    // Check if any active mini-game blocks movement onto this tile
+    for (const miniGame of this.miniGames) {
+      if (miniGame.blocksStep && miniGame.blocksStep(character, nx, ny)) {
         return false;
       }
     }
@@ -581,6 +473,20 @@ export class Game {
     this.tryStep(npc, move.dx, move.dy, NPC_STEP);
   }
 
+  getMiniGameBlockedTiles() {
+    const blocked = new Set();
+    for (const game of this.miniGames) {
+      if (game.isOpen?.() && game.activeBoard?.originX !== undefined) {
+        for (let by = 0; by < 3; by++) {
+          for (let bx = 0; bx < 3; bx++) {
+            blocked.add(`${game.activeBoard.originX + bx},${game.activeBoard.originY + by}`);
+          }
+        }
+      }
+    }
+    return blocked;
+  }
+
   updateCompanion(comp, dt) {
     if (comp.cheerTimer > 0) {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
@@ -604,7 +510,6 @@ export class Game {
         if (comp.x === comp.stagedDestination.x && comp.y === comp.stagedDestination.y) {
           comp.stagedDestination = null;
           comp.path = [];
-          comp.moving = false;
           return;
         }
         if (comp.path && comp.path.length) {
@@ -614,36 +519,17 @@ export class Game {
           if (Math.abs(dx) + Math.abs(dy) === 1) {
             this.tryStep(comp, dx, dy, COMPANION_STEP);
           } else {
-            // Re-pathfind around the board if direct step failed
-            const tttGame = this.miniGames.find(m => m.isTileOnBoard && m.isOpen && m.isOpen());
-            const blocked = new Set();
-            if (tttGame) {
-              for (let by = 0; by < 3; by++) {
-                for (let bx = 0; bx < 3; bx++) {
-                  blocked.add(`${tttGame.activeBoard.originX + bx},${tttGame.activeBoard.originY + by}`);
-                }
-              }
-            }
+            const blocked = this.getMiniGameBlockedTiles();
             const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination, blocked);
             comp.path = repath.length ? repath : [];
           }
           return;
         } else {
-          // If destination set but no path or stuck, calculate path around the board
-          const tttGame = this.miniGames.find(m => m.isTileOnBoard && m.isOpen && m.isOpen());
-          const blocked = new Set();
-          if (tttGame) {
-            for (let by = 0; by < 3; by++) {
-              for (let bx = 0; bx < 3; bx++) {
-                blocked.add(`${tttGame.activeBoard.originX + bx},${tttGame.activeBoard.originY + by}`);
-              }
-            }
-          }
+          const blocked = this.getMiniGameBlockedTiles();
           const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination, blocked);
           if (repath.length) {
             comp.path = repath;
           } else {
-            // If completely unpathable, place them on the destination tile
             comp.x = comp.stagedDestination.x;
             comp.y = comp.stagedDestination.y;
             comp.stagedDestination = null;
@@ -664,7 +550,6 @@ export class Game {
       if (!buddy) return;
 
       const dist = Math.hypot(buddy.x - comp.x, buddy.y - comp.y);
-      // If close enough (within 1 tile), relax
       if (dist <= 1.5) return;
 
       target = { x: buddy.x, y: buddy.y };
@@ -676,7 +561,6 @@ export class Game {
     const stepX = dx === 0 ? 0 : (dx > 0 ? 1 : -1);
     const stepY = dy === 0 ? 0 : (dy > 0 ? 1 : -1);
 
-    // Try primary axis then secondary
     if (Math.abs(dx) >= Math.abs(dy)) {
       if (stepX !== 0 && this.tryStep(comp, stepX, 0, COMPANION_STEP)) return;
       if (stepY !== 0 && this.tryStep(comp, 0, stepY, COMPANION_STEP)) return;
@@ -703,188 +587,8 @@ export class Game {
     const dt = Math.min((now - this.last) / 1000, 0.05);
     this.last = now;
     this.update(dt);
-    this.render();
+    this.renderer.drawFrame(this);
     requestAnimationFrame(this.frame);
-  }
-
-  variantFor(x, y) {
-    return Math.abs((x * 73856093) ^ (y * 19349663) ^ (x * y * 83492791)) % 3;
-  }
-
-  render() {
-    if (!this.terrain) return;
-    const { ctx } = this;
-    ctx.clearRect(0, 0, this.width, this.height);
-    ctx.fillStyle = '#0b110d';
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    const camX = Math.round(this.camera.x);
-    const camY = Math.round(this.camera.y);
-    ctx.save();
-    ctx.translate(-camX, -camY);
-
-    const x0 = clamp(Math.floor(camX / TILE) - 1, 0, WORLD_SIZE - 1);
-    const y0 = clamp(Math.floor(camY / TILE) - 1, 0, WORLD_SIZE - 1);
-    const x1 = clamp(Math.ceil((camX + this.width) / TILE) + 1, 0, WORLD_SIZE - 1);
-    const y1 = clamp(Math.ceil((camY + this.height) / TILE) + 1, 0, WORLD_SIZE - 1);
-
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const texture = this.tileTextures[this.terrain[y][x]][this.variantFor(x, y)];
-        ctx.drawImage(texture, x * TILE, y * TILE, TILE, TILE);
-      }
-    }
-
-    // Render ground-based mini games (e.g. Tic-Tac-Toe board on grass)
-    for (const game of this.miniGames) {
-      if (game.renderGround) game.renderGround(ctx, this.camera);
-      else if (game.render) game.render(ctx, { x: 0, y: 0 }); // camera is already translated in ctx
-    }
-
-    if (this.destination) {
-      const pulse = 0.5 + Math.sin(this.time * 7) * 0.5;
-      const cx = (this.destination.x + 0.5) * TILE;
-      const cy = (this.destination.y + 0.5) * TILE;
-      ctx.beginPath();
-      ctx.arc(cx, cy, TILE * (0.24 + pulse * 0.05), 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(229, 244, 165, ${0.35 + pulse * 0.35})`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#e5f4a5';
-      ctx.fill();
-    }
-
-    const characters = [];
-    if (this.player) characters.push(this.player);
-    characters.push(...this.npcs);
-    characters.push(...this.companions);
-    characters.sort((a, b) => this.interpolated(a).y - this.interpolated(b).y);
-
-    for (const character of characters) {
-      this.drawCharacter(character);
-    }
-
-    ctx.restore();
-
-    const hovered = this.hovered || this.selected;
-    if (hovered) this.drawNameplate(hovered);
-    this.drawMinimap();
-  }
-
-  drawCharacter(character) {
-    const { ctx } = this;
-    const isCompanion = Boolean(character.isCompanion);
-    const height = isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
-    const width = height;
-    const position = this.interpolated(character);
-    const footX = (position.x + 0.5) * TILE;
-    const footY = (position.y + 1) * TILE;
-    const movingT = character.moving ? clamp(character.elapsed / character.duration, 0, 1) : 0;
-    const idle = Math.sin(this.time * 2.2 + (hashString(character.id) % 100)) * 0.7;
-    const cheerHop = isCompanion && character.cheerTimer > 0
-      ? Math.abs(Math.sin((1.4 - character.cheerTimer) * 14)) * TILE * 0.45
-      : 0;
-    const lift = character.moving
-      ? Math.sin(movingT * Math.PI) * TILE * 0.09
-      : (idle * 0.3 + cheerHop);
-    const top = footY - height - lift;
-
-    if (character === this.player || character === this.selected || character === this.hovered) {
-      ctx.beginPath();
-      ctx.ellipse(footX, footY - 2, TILE * 0.42, TILE * 0.16, 0, 0, Math.PI * 2);
-      ctx.fillStyle = character === this.player ? 'rgba(229, 244, 165, 0.16)' : 'rgba(229, 244, 165, 0.28)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(229, 244, 165, 0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
-    const image = getAvatarImage(character.recipe);
-    if (image) {
-      drawAvatar(ctx, image, footX - width / 2, top, width, height, shouldMirror(character.direction));
-    } else {
-      loadAvatarImage(character.recipe).catch(() => {});
-      ctx.fillStyle = 'rgba(20, 30, 22, 0.8)';
-      ctx.beginPath();
-      ctx.arc(footX, footY - height * 0.45, height * 0.3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(229, 244, 165, 0.5)';
-      ctx.stroke();
-    }
-  }
-
-  drawNameplate(character) {
-    const { ctx } = this;
-    const isCompanion = Boolean(character.isCompanion);
-    const height = isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
-    const position = this.interpolated(character);
-    const footX = (position.x + 0.5) * TILE - this.camera.x;
-    const footY = (position.y + 1) * TILE - this.camera.y;
-    let label = character.name;
-    if (character.isPlayer) label = `${character.name} · you`;
-    else if (isCompanion) label = `${character.name} · buddy`;
-
-    ctx.save();
-    ctx.font = '600 11px system-ui, -apple-system, sans-serif';
-    const textWidth = ctx.measureText(label).width;
-    const width = textWidth + 16;
-    const boxHeight = 22;
-    const x = clamp(footX - width / 2, 6, this.width - width - 6);
-    const y = footY - height - 24;
-    ctx.fillStyle = 'rgba(10, 17, 12, 0.9)';
-    ctx.strokeStyle = 'rgba(163, 210, 139, 0.35)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x, y, width, boxHeight, 6);
-    else ctx.rect(x, y, width, boxHeight);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#edf4e9';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, x + width / 2, y + boxHeight / 2 + 0.5);
-    ctx.restore();
-  }
-
-  drawMinimap() {
-    if (!this.minimapBase) return;
-    const size = this.minimap.width;
-    const { mctx } = this;
-    mctx.clearRect(0, 0, size, size);
-    mctx.imageSmoothingEnabled = false;
-    mctx.drawImage(this.minimapBase, 0, 0, size, size);
-
-    const scale = size / (WORLD_SIZE * TILE);
-    mctx.fillStyle = 'rgba(229, 244, 165, 0.55)';
-    mctx.strokeStyle = 'rgba(229, 244, 165, 0.55)';
-    mctx.lineWidth = Math.max(1, size / 320);
-    mctx.strokeRect(
-      this.camera.x * scale,
-      this.camera.y * scale,
-      Math.min(size, this.width * scale),
-      Math.min(size, this.height * scale)
-    );
-
-    for (const npc of this.npcs) {
-      const position = this.interpolated(npc);
-      mctx.beginPath();
-      mctx.arc((position.x + 0.5) * (size / WORLD_SIZE), (position.y + 0.5) * (size / WORLD_SIZE), Math.max(2, size / 110), 0, Math.PI * 2);
-      mctx.fillStyle = 'rgba(233, 240, 232, 0.65)';
-      mctx.fill();
-    }
-
-    if (this.player) {
-      const position = this.interpolated(this.player);
-      mctx.beginPath();
-      mctx.arc((position.x + 0.5) * (size / WORLD_SIZE), (position.y + 0.5) * (size / WORLD_SIZE), Math.max(3, size / 75), 0, Math.PI * 2);
-      mctx.fillStyle = '#e5f4a5';
-      mctx.fill();
-      mctx.strokeStyle = 'rgba(10, 17, 12, 0.9)';
-      mctx.lineWidth = Math.max(1.5, size / 180);
-      mctx.stroke();
-    }
   }
 
   pointerWorld(event) {
