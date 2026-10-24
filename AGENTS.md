@@ -47,7 +47,7 @@ commit `node_modules/`.
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
 | `scripts/render_cubeworld_pets.py` | Standalone 3D software rasterizer generating `data/cubeworld_pets.json` |
-| `data/cubeworld_pets.json` | Pre-rendered offline sprite sheets for Cube World animal companions |
+| `data/cubeworld_pets.json` | Pre-rendered offline sprite sheets for Cube World animal pets and creatures |
 | `test/` | `node:test` suites for pure logic |
 
 Keep `src/game.js` import-safe in Node: no DOM access at module top level, only inside the

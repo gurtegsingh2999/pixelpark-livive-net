@@ -200,8 +200,8 @@ export class WorldRenderer {
     const { ctx } = this;
     const isCompanion = Boolean(character.isCompanion);
     const profile = getAnimationProfile(character.recipe);
-    const isPet = Boolean(profile.family?.startsWith('pet-'));
-    const height = isCompanion ? (isPet ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
+    const is3DModel = Boolean(profile.family?.startsWith('pet-') || profile.family?.startsWith('creature-'));
+    const height = isCompanion ? (is3DModel ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
     const width = height;
     const position = game.interpolated(character);
     const footX = (position.x + 0.5) * TILE;
@@ -257,12 +257,11 @@ export class WorldRenderer {
       ctx.stroke();
     }
 
-    // Determine animation frame from family profile
-    let targetFrame = 'default';
+    // Alternate walk frames for pets and creatures
     if (isCompanion && character.cheerTimer > 0 && profile.frames?.includes('cheer')) {
       targetFrame = 'cheer';
-    } else if (character.moving && profile.family?.startsWith('pet-')) {
-      // Alternate pet walk frames: walk1 on first half of step, walk2 on second half
+    } else if (character.moving && is3DModel) {
+      // Alternate walk frames: walk1 on first half of step, walk2 on second half
       targetFrame = movingT < 0.5 ? 'walk1' : 'walk2';
     } else if (profile.getFrame) {
       const f = profile.getFrame(animTime);
@@ -272,8 +271,8 @@ export class WorldRenderer {
       targetFrame = 'blink';
     }
 
-    // For pet companions facing UP (away from camera), switch to the reverse 3D view
-    if (isPet && character.direction === UP) {
+    // For pet & creature companions facing UP (away from camera), switch to the reverse 3D view
+    if (is3DModel && character.direction === UP) {
       const backKey = `back_${targetFrame}`;
       if (profile.frames?.includes(backKey)) {
         targetFrame = backKey;
@@ -317,8 +316,8 @@ export class WorldRenderer {
     const { ctx } = this;
     const isCompanion = Boolean(character.isCompanion);
     const profile = getAnimationProfile(character.recipe);
-    const isPet = Boolean(profile.family?.startsWith('pet-'));
-    const height = isCompanion ? (isPet ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
+    const is3DModel = Boolean(profile.family?.startsWith('pet-') || profile.family?.startsWith('creature-'));
+    const height = isCompanion ? (is3DModel ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
     const position = game.interpolated(character);
     const footX = (position.x + 0.5) * TILE - game.camera.x;
     const footY = (position.y + 1) * TILE - game.camera.y;

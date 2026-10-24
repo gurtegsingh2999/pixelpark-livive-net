@@ -569,8 +569,79 @@ export const ANIMATION_PROFILES = {
   'pet-pig': makePetProfile('pig', { trotHop: 0.04, waddle: true, idleSniff: true }),
   'pet-sheep': makePetProfile('sheep', { trotHop: 0.04, waddle: true, idleSniff: true }),
   'pet-wolf': makePetProfile('wolf', { trotHop: 0.06, wagTail: true, idleSniff: true }),
-  'pet-raccoon': makePetProfile('raccoon', { trotHop: 0.04, sleek: true, idleSniff: true })
+  'pet-raccoon': makePetProfile('raccoon', { trotHop: 0.04, sleek: true, idleSniff: true }),
+  'pet-hedgehog': makePetProfile('hedgehog', { trotHop: 0.03, waddle: true, idleSniff: true }),
+
+  // --- Cube World Creatures ---
+  // Yeti, Demon, Goblin, Giant, Skeleton, Skeleton-Armor, Zombie, Wizard
+  'creature-yeti': makeCreatureProfile('yeti', { strideHop: 0.05, sway: 6.0 }),
+  'creature-demon': makeCreatureProfile('demon', { strideHop: 0.06, sway: 4.5 }),
+  'creature-goblin': makeCreatureProfile('goblin', { strideHop: 0.08, sway: 7.0 }),
+  'creature-giant': makeCreatureProfile('giant', { strideHop: 0.04, sway: 4.0 }),
+  'creature-skeleton': makeCreatureProfile('skeleton', { strideHop: 0.05, rattle: true }),
+  'creature-skeleton-armor': makeCreatureProfile('skeleton-armor', { strideHop: 0.05, rattle: true }),
+  'creature-zombie': makeCreatureProfile('zombie', { strideHop: 0.04, lurch: true }),
+  'creature-wizard': makeCreatureProfile('wizard', { strideHop: 0.03, glide: true })
 };
+
+function makeCreatureProfile(species, { strideHop = 0.05, sway = 5.0, rattle = false, lurch = false, glide = false } = {}) {
+  return {
+    family: `creature-${species}`,
+    frames: [
+      'default', 'idle2', 'walk1', 'walk2', 'cheer',
+      'back_default', 'back_idle2', 'back_walk1', 'back_walk2', 'back_cheer'
+    ],
+
+    getFrame(t) {
+      const idleCycle = (t % 3.6) / 3.6;
+      if (idleCycle >= 0.72 && idleCycle <= 0.88) {
+        return 'idle2';
+      }
+      return 'default';
+    },
+
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      if (moving) {
+        const hop = Math.sin(movingT * Math.PI);
+        const swayAngle = Math.sin(movingT * Math.PI * 2) * (sway * Math.PI / 180);
+        const lurchPitch = lurch ? Math.sin(movingT * Math.PI) * (6.0 * Math.PI / 180) : 0;
+
+        return {
+          translateY: -characterHeight * strideHop * hop,
+          translateX: 0,
+          rotate: swayAngle + lurchPitch,
+          scaleX: 1 + 0.02 * hop,
+          scaleY: 1 - 0.02 * hop,
+          alpha: 1,
+          shadowScale: 1 - 0.10 * hop
+        };
+      }
+
+      // Creature idle breathing and ominous / watchful sway
+      const breathe = Math.sin(t * 2.2) * 0.02;
+      const idleSway = Math.sin(t * 1.5) * (1.8 * Math.PI / 180);
+      const rattleJiggle = rattle ? (Math.sin(t * 12.0) * 0.008) : 0;
+
+      return {
+        translateY: -Math.abs(Math.sin(t * 1.6)) * 0.3,
+        translateX: 0,
+        rotate: idleSway,
+        scaleX: 1 - breathe * 0.4 + rattleJiggle,
+        scaleY: 1 + breathe,
+        alpha: 1,
+        shadowScale: 1
+      };
+    },
+
+    isBlinking() {
+      return false;
+    },
+
+    getLookDirection() {
+      return 'default';
+    }
+  };
+}
 
 function makePetProfile(species, { trotHop = 0.05, wagTail = false, peck = false, waddle = false, idleSniff = false } = {}) {
   return {
@@ -642,6 +713,9 @@ export function getAnimationProfile(recipe) {
   if (recipe.isCompanion) {
     if (ANIMATION_PROFILES[`pet-${recipe.style}`]) {
       return ANIMATION_PROFILES[`pet-${recipe.style}`];
+    }
+    if (ANIMATION_PROFILES[`creature-${recipe.style}`]) {
+      return ANIMATION_PROFILES[`creature-${recipe.style}`];
     }
     return ANIMATION_PROFILES[recipe.style] || ANIMATION_PROFILES['voxel-bot'];
   }

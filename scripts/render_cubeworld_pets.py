@@ -2,30 +2,27 @@
 """
 scripts/render_cubeworld_pets.py
 
-Pure-Python 3D software rasterizer for Cube World animal companions.
+Pure-Python 3D software rasterizer for Cube World animal pets and creature companions.
 Renders Wavefront OBJ models from assets/cubeworld-src/ into an isometric
 sprite sheet in data/cubeworld_pets.json.
 
 Key Features & Pipeline:
   1. Unified 3D World Scaling:
-     Uses the Horse model (the largest animal, max dimension 3.37m) as the
-     reference baseline. All animals are rendered with the exact same
-     pixels-per-3D-unit world scale so their natural relative heights,
-     lengths, and body volumes are faithfully preserved (e.g. chick < dog < horse).
+     - Animal Pets (10 species: dog, cat, chicken, chick, horse, pig, sheep, wolf, raccoon, hedgehog):
+       Scaled with Horse (max dimension 3.37m) as reference baseline (scale = 66.81 px/unit in 256x256).
+     - Creatures (8 species: yeti, demon, goblin, giant, skeleton, skeleton-armor, zombie, wizard):
+       Scaled at 50.0 px/unit so imposing humanoids and giants fit naturally on screen alongside
+       players and animal pets without clipping.
   2. Ground Anchoring:
      All models are vertically anchored at their lowest foot/hoof contact point
      (min_y) so their feet rest at the exact same ground level in-game.
-  3. Proper Winding Order & Culling:
-     Handles screen-space inversion (where screen Y points downward) to ensure
-     exterior front-facing voxel surfaces are rendered with positive barycentric
-     weights and internal/back faces are cleanly culled.
+  3. Bidirectional Views (Forward & Reverse):
+     - Forward view: yaw = +45° (Stage Left, facing camera for DOWN/LEFT, mirrored for RIGHT).
+     - Reverse view: yaw = +135° (Stage Left, facing away from camera for UP, mirrored for UP-RIGHT).
   4. Outdoor Park Lighting Model:
      Direct key sunlight from high-front-right (+X, +Y, +Z), sky bounce fill,
      and an elevated ambient floor with top-plane specular highlights to match
      DiceBear Voxel Art's crisp aesthetic and avoid muddy shadows.
-  5. Directional Orientation:
-     Rendered facing Stage Left (azimuth +45°, elevation 35.264° isometric)
-     consistent with Voxel Art left-default facing.
 """
 
 import math
@@ -129,16 +126,9 @@ def parse_obj(obj_path):
 def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
                 img_size=256, world_scale=66.0,
                 yaw_deg=45, pitch_deg=35.264,
-                y_offset=0, leg_swing=0, head_pitch=0):
+                y_offset=0, leg_swing=0, head_pitch=0, bottom_pad=30):
     """
     Renders a 3D mesh using software isometric rasterization.
-    
-    Arguments:
-      world_scale: Pixels per 3D unit. Unified across all species so relative sizes are realistic.
-      yaw_deg: Azimuth angle (+45° = Stage Left default).
-      pitch_deg: Elevation angle (35.264° = True Isometric).
-      leg_swing: Procedural trot animation angle offset for leg vertices.
-      head_pitch: Procedural head pitch offset for idle/eating animations.
     """
     min_x = min(pt[0] for pt in v)
     max_x = max(pt[0] for pt in v)
@@ -182,7 +172,7 @@ def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
         rz = px_orig * sin_az + pz_orig * cos_az
         px = rx + img_size / 2
         # Ground anchor placed with padding from bottom of canvas
-        py = img_size - 30 - (py_orig * cos_el - rz * sin_el)
+        py = img_size - bottom_pad - (py_orig * cos_el - rz * sin_el)
         depth = py_orig * sin_el + rz * cos_el
         transformed_v.append((px, py, depth, [px_orig, py_orig, pz_orig]))
         
@@ -192,7 +182,7 @@ def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
     # BRIGHT OUTDOOR SUNLIGHT MODEL:
     # Key light: bright direct sun coming from high-front-right (+X, +Y, +Z)
     # Fill light: soft sky bounce from high-back-left (-X, +Y, -Z)
-    # Ambient: high baseline floor so pinks, whites, and colors stay vibrant and light
+    # Ambient: high baseline floor so colors stay vibrant and light
     sun_dir = [0.45, 0.85, 0.35]
     s_len = math.sqrt(sum(x*x for x in sun_dir))
     sun_dir = [x/s_len for x in sun_dir]
@@ -205,8 +195,7 @@ def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
         for i in range(1, len(poly) - 1):
             # Polygon vertices in OBJ are counter-clockwise when viewed from front.
             # In screen coordinates (where Y points DOWN), counter-clockwise vertices
-            # yield det < 0. To ensure front-facing polygons are rendered and back faces
-            # are culled, swap p1 and p2 so front faces produce positive det > 0.
+            # yield det < 0. Swap p1 and p2 so front faces produce positive det > 0.
             p0_idx, p1_idx, p2_idx = poly[0], poly[i+1], poly[i]
             p0, p1, p2 = transformed_v[p0_idx[0]], transformed_v[p1_idx[0]], transformed_v[p2_idx[0]]
             
@@ -249,14 +238,8 @@ def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
             sky_dot = max(0.0, wn[0]*sky_dir[0] + wn[1]*sky_dir[1] + wn[2]*sky_dir[2])
             
             # Vibrant outdoor park daylight:
-            # - Base ambient floor: 0.86 keeps colours bright and light (no muddy grey shadows)
-            # - Direct sun: up to +0.38 intensity on sunlit faces
-            # - Sky bounce: +0.14 fill
             light_mult = 0.86 + 0.38 * sun_dot + 0.14 * sky_dot
-            
-            # Specular / highlight shimmer on upward facing voxel planes (matching Voxel Art .38 white opacity highlights)
             top_highlight = 1.0 + (0.16 * max(0.0, wn[1]))
-            
             final_mult = light_mult * top_highlight
             
             fr = min(255, int(cr * final_mult))
@@ -288,10 +271,49 @@ def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
                             
     return encode_png_data_url(img_size, img_size, framebuffer)
 
+def render_model_frames(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                        img_size, world_scale, bottom_pad=30):
+    return {
+        # Front / forward-facing frames (facing camera, yaw = 45°):
+        'default': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                               img_size=img_size, world_scale=world_scale,
+                               yaw_deg=45, leg_swing=0, head_pitch=0, bottom_pad=bottom_pad),
+        'idle2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                             img_size=img_size, world_scale=world_scale,
+                             yaw_deg=45, leg_swing=0, head_pitch=-0.2, bottom_pad=bottom_pad),
+        'walk1': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                             img_size=img_size, world_scale=world_scale,
+                             yaw_deg=45, leg_swing=0.45, head_pitch=0.1, bottom_pad=bottom_pad),
+        'walk2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                             img_size=img_size, world_scale=world_scale,
+                             yaw_deg=45, leg_swing=-0.45, head_pitch=-0.1, bottom_pad=bottom_pad),
+        'cheer': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                             img_size=img_size, world_scale=world_scale,
+                             yaw_deg=45, y_offset=0.25, leg_swing=0.2, head_pitch=0.3, bottom_pad=bottom_pad),
+
+        # Reverse / back-facing frames (facing away from camera for walking UP, yaw = 135°):
+        'back_default': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                    img_size=img_size, world_scale=world_scale,
+                                    yaw_deg=135, leg_swing=0, head_pitch=0, bottom_pad=bottom_pad),
+        'back_idle2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                  img_size=img_size, world_scale=world_scale,
+                                  yaw_deg=135, leg_swing=0, head_pitch=-0.2, bottom_pad=bottom_pad),
+        'back_walk1': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                  img_size=img_size, world_scale=world_scale,
+                                  yaw_deg=135, leg_swing=0.45, head_pitch=0.1, bottom_pad=bottom_pad),
+        'back_walk2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                  img_size=img_size, world_scale=world_scale,
+                                  yaw_deg=135, leg_swing=-0.45, head_pitch=-0.1, bottom_pad=bottom_pad),
+        'back_cheer': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                  img_size=img_size, world_scale=world_scale,
+                                  yaw_deg=135, y_offset=0.25, leg_swing=0.2, head_pitch=0.3, bottom_pad=bottom_pad)
+    }
+
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     atlas_path = os.path.join(repo_root, 'assets/cubeworld-src/Atlas.png')
     animals_dir = os.path.join(repo_root, 'assets/cubeworld-src/Animals/OBJ')
+    creatures_dir = os.path.join(repo_root, 'assets/cubeworld-src/Creatures/OBJ')
     output_path = os.path.join(repo_root, 'data/cubeworld_pets.json')
 
     if not os.path.exists(atlas_path):
@@ -300,7 +322,7 @@ def main():
 
     atlas_w, atlas_h, atlas_px = decode_png(atlas_path)
 
-    # 1. Compute unified 3D world scale based on the Horse model (largest animal)
+    # 1. Compute unified 3D world scale for pets based on Horse model (largest animal)
     horse_obj = os.path.join(animals_dir, 'Horse.obj')
     horse_v, _, _, _ = parse_obj(horse_obj)
     horse_max_dim = max(
@@ -309,66 +331,62 @@ def main():
         max(pt[2] for pt in horse_v) - min(pt[2] for pt in horse_v)
     )
     
-    # Horse fills ~88% of 256px canvas; all other animals scale proportionally
     img_size = 256
-    unified_world_scale = (img_size * 0.88) / horse_max_dim
-    print(f"Unified 3D World Scale: {unified_world_scale:.2f} px/unit (Horse max dim = {horse_max_dim:.2f}m, render size = {img_size}x{img_size})")
+    pet_world_scale = (img_size * 0.88) / horse_max_dim
+    print(f"Pet World Scale: {pet_world_scale:.2f} px/unit (Horse max dim = {horse_max_dim:.2f}m)")
 
-    models = ['Dog', 'Cat', 'Chicken', 'Chick', 'Horse', 'Pig', 'Sheep', 'Wolf', 'Raccoon']
+    # 2. Creature scaling (50 px/unit fits large humanoids and giants cleanly without clipping)
+    creature_world_scale = 50.0
+    print(f"Creature World Scale: {creature_world_scale:.2f} px/unit")
+
+    pet_models = ['Dog', 'Cat', 'Chicken', 'Chick', 'Horse', 'Pig', 'Sheep', 'Wolf', 'Raccoon', 'Hedgehog']
+    creature_models = [
+        ('Yeti', 'yeti'),
+        ('Demon', 'demon'),
+        ('Goblin', 'goblin'),
+        ('Giant', 'giant'),
+        ('Skeleton', 'skeleton'),
+        ('Skeleton_Armor', 'skeleton-armor'),
+        ('Zombie', 'zombie'),
+        ('Wizard', 'wizard')
+    ]
+
     sprites_data = {}
 
-    for name in models:
+    print("\n--- Rendering Animal Pets ---")
+    for name in pet_models:
         path = os.path.join(animals_dir, f'{name}.obj')
         if not os.path.exists(path):
             print(f"Warning: {path} not found, skipping.", file=sys.stderr)
             continue
-            
         v, vt, vn, faces = parse_obj(path)
         animal_key = name.lower()
-        
-        # Front-facing (Stage Left, yaw = 45°) for DOWN, LEFT, and mirrored for RIGHT
-        # Back-facing (Stage Left away from camera, yaw = 135°) for UP, and mirrored for UP-RIGHT
-        sprites_data[animal_key] = {
-            # Front / forward-facing frames (facing camera):
-            'default': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                   img_size=img_size, world_scale=unified_world_scale,
-                                   yaw_deg=45, leg_swing=0, head_pitch=0),
-            'idle2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                 img_size=img_size, world_scale=unified_world_scale,
-                                 yaw_deg=45, leg_swing=0, head_pitch=-0.2),
-            'walk1': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                 img_size=img_size, world_scale=unified_world_scale,
-                                 yaw_deg=45, leg_swing=0.45, head_pitch=0.1),
-            'walk2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                 img_size=img_size, world_scale=unified_world_scale,
-                                 yaw_deg=45, leg_swing=-0.45, head_pitch=-0.1),
-            'cheer': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                 img_size=img_size, world_scale=unified_world_scale,
-                                 yaw_deg=45, y_offset=0.25, leg_swing=0.2, head_pitch=0.3),
+        sprites_data[animal_key] = render_model_frames(
+            v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+            img_size=img_size, world_scale=pet_world_scale, bottom_pad=30
+        )
+        print(f"Rendered Pet: {name:12s} ({animal_key})")
 
-            # Reverse / back-facing frames (facing away from camera for walking UP):
-            'back_default': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                        img_size=img_size, world_scale=unified_world_scale,
-                                        yaw_deg=135, leg_swing=0, head_pitch=0),
-            'back_idle2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                      img_size=img_size, world_scale=unified_world_scale,
-                                      yaw_deg=135, leg_swing=0, head_pitch=-0.2),
-            'back_walk1': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                      img_size=img_size, world_scale=unified_world_scale,
-                                      yaw_deg=135, leg_swing=0.45, head_pitch=0.1),
-            'back_walk2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                      img_size=img_size, world_scale=unified_world_scale,
-                                      yaw_deg=135, leg_swing=-0.45, head_pitch=-0.1),
-            'back_cheer': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                                      img_size=img_size, world_scale=unified_world_scale,
-                                      yaw_deg=135, y_offset=0.25, leg_swing=0.2, head_pitch=0.3)
-        }
-        print(f"Rendered {name:8s} front and back frames with proportional 3D world scale")
+    print("\n--- Rendering Creatures ---")
+    for filename, creature_key in creature_models:
+        path = os.path.join(creatures_dir, f'{filename}.obj')
+        if not os.path.exists(path):
+            print(f"Warning: {path} not found, skipping.", file=sys.stderr)
+            continue
+        v, vt, vn, faces = parse_obj(path)
+        sprites_data[creature_key] = render_model_frames(
+            v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+            img_size=img_size, world_scale=creature_world_scale, bottom_pad=24
+        )
+        # Also alias underscore version (e.g. skeleton_armor) for safety
+        if '_' in filename:
+            sprites_data[filename.lower()] = sprites_data[creature_key]
+        print(f"Rendered Creature: {filename:14s} ({creature_key})")
 
     with open(output_path, 'w') as f:
         json.dump(sprites_data, f, indent=2)
 
-    print(f"\nSuccessfully generated {output_path} with {len(sprites_data)} pet species!")
+    print(f"\nSuccessfully generated {output_path} with {len(sprites_data)} total models!")
 
 if __name__ == '__main__':
     main()

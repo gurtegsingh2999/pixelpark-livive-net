@@ -3,8 +3,9 @@ import { makeSeed } from './world.js';
 import { getAnimationProfile } from './animation.js';
 import petSprites from '../data/cubeworld_pets.json' with { type: 'json' };
 
-export const CUBEWORLD_PETS = ['dog', 'cat', 'chicken', 'chick', 'horse', 'pig', 'sheep', 'wolf', 'raccoon'];
-export const COMPANION_STYLES = ['clay', 'critters', 'gaze', 'sprouts', 'voxel-bot', ...CUBEWORLD_PETS];
+export const CUBEWORLD_PETS = ['dog', 'cat', 'chicken', 'chick', 'horse', 'pig', 'sheep', 'wolf', 'raccoon', 'hedgehog'];
+export const CUBEWORLD_CREATURES = ['yeti', 'demon', 'goblin', 'giant', 'skeleton', 'skeleton-armor', 'zombie', 'wizard'];
+export const COMPANION_STYLES = ['clay', 'critters', 'gaze', 'sprouts', 'voxel-bot', ...CUBEWORLD_PETS, ...CUBEWORLD_CREATURES];
 
 export const TOP_VARIANTS = [
   'afro', 'animalEars', 'beanie', 'bob', 'bowl', 'braids', 'bunnyEars', 'buns',
@@ -134,10 +135,10 @@ export function avatarSvg(recipe, { frame = 'default' } = {}) {
   const baseKey = canonicalRecipe(recipe);
   const key = `${baseKey}:${frame}`;
   if (!svgCache.has(key)) {
-    if (recipe.isCompanion && CUBEWORLD_PETS.includes(recipe.style)) {
-      // Cube World pets are pre-rendered into high-res pixel-perfect isometric sprites
-      const pet = petSprites[recipe.style] || petSprites['dog'];
-      const dataUrl = pet[frame] || pet['default'];
+    if (recipe.isCompanion && (CUBEWORLD_PETS.includes(recipe.style) || CUBEWORLD_CREATURES.includes(recipe.style))) {
+      // Cube World pets & creatures are pre-rendered into high-res pixel-perfect isometric sprites
+      const sprite = petSprites[recipe.style] || petSprites['dog'];
+      const dataUrl = sprite[frame] || sprite['default'];
       return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="320" height="320"><image href="${dataUrl}" width="128" height="128"/></svg>`;
     }
 
@@ -164,9 +165,9 @@ export function avatarSvg(recipe, { frame = 'default' } = {}) {
 }
 
 export function avatarDataUrl(recipe, { frame = 'default' } = {}) {
-  if (recipe?.isCompanion && CUBEWORLD_PETS.includes(recipe.style)) {
-    const pet = petSprites[recipe.style] || petSprites['dog'];
-    return pet[frame] || pet['default'];
+  if (recipe?.isCompanion && (CUBEWORLD_PETS.includes(recipe.style) || CUBEWORLD_CREATURES.includes(recipe.style))) {
+    const sprite = petSprites[recipe.style] || petSprites['dog'];
+    return sprite[frame] || sprite['default'];
   }
 
   const baseKey = canonicalRecipe(recipe);
