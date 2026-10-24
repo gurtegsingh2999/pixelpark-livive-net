@@ -6,7 +6,7 @@ import {
   findOpenTile,
   findPath
 } from './world.js';
-import { occupantAtTile, reservationAtTile } from './characters.js';
+import { occupantAtTile, reservationAtTile, canCollide } from './characters.js';
 import { directionForStep } from './facing.js';
 import { WorldRenderer, TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
 
@@ -378,10 +378,11 @@ export class Game {
     const ny = character.y + dy;
     if (!isWalkable(typeAt(this.terrain, nx, ny))) return false;
 
-    // Strict occupancy and reservation collision:
-    // Check if target tile is occupied or reserved by any other character (player, NPC, or companion)
-    const otherCharacters = this.allOtherCharacters(character);
-    if (reservationAtTile(otherCharacters, nx, ny)) {
+    // Strict occupancy and reservation collision with collision exclusion rule:
+    // Filter other characters using canCollide(character, other)
+    // (e.g. Walking NPCs are not blocked by companions, but companions are blocked by NPCs)
+    const collidingObstacles = this.allOtherCharacters(character).filter(other => canCollide(character, other));
+    if (reservationAtTile(collidingObstacles, nx, ny)) {
       return false;
     }
 
@@ -471,8 +472,10 @@ export class Game {
 
     const occupied = new Set();
     for (const other of this.allOtherCharacters(npc)) {
-      occupied.add(`${other.x},${other.y}`);
-      if (other.moving) occupied.add(`${other.toX},${other.toY}`);
+      if (canCollide(npc, other)) {
+        occupied.add(`${other.x},${other.y}`);
+        if (other.moving) occupied.add(`${other.toX},${other.toY}`);
+      }
     }
 
     const options = [];

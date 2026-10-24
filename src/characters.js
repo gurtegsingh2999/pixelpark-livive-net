@@ -11,6 +11,27 @@ export function reservationAtTile(characters, x, y, exclude = null) {
   return null;
 }
 
+/**
+ * Checks whether an moving entity (mover) can collide with or is blocked by an obstacle entity.
+ *
+ * Collision exclusion rules:
+ * - Walking NPCs are NOT blocked by companions (an NPC can walk through a companion).
+ * - Companions ARE blocked by NPCs, the player, and other companions (companions cannot walk through NPCs).
+ * - Players and NPCs are blocked by other NPCs.
+ * - Players bump into companions (initiates dialogue).
+ */
+export function canCollide(mover, obstacle) {
+  if (!mover || !obstacle || mover === obstacle) return false;
+
+  // Collision exclusion: An NPC walking is NOT blocked by a companion
+  if (!mover.isCompanion && !mover.isPlayer && obstacle.isCompanion) {
+    return false;
+  }
+
+  // All other combinations collide (companions vs NPCs, companions vs companions, player vs all, NPCs vs NPCs/player)
+  return true;
+}
+
 export function formatCompanionInfo(companion) {
   const style = companion?.recipe?.style || '';
   const pets = ['dog', 'cat', 'chicken', 'chick', 'horse', 'pig', 'sheep', 'wolf', 'raccoon', 'hedgehog'];

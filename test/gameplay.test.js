@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { occupantAtTile, reservationAtTile, formatCompanionInfo } from '../src/characters.js';
+import { occupantAtTile, reservationAtTile, formatCompanionInfo, canCollide } from '../src/characters.js';
 import { DOWN, LEFT, RIGHT, UP, directionForStep, shouldMirror } from '../src/facing.js';
 import { NPC_NAMES, VIBES, pickName, pickVibe } from '../src/names.js';
 import { Game } from '../src/game.js';
@@ -68,6 +68,36 @@ test('formatCompanionInfo formats companion name, class, and type', () => {
   assert.equal(bot.class, 'Voxel Bot');
   assert.equal(bot.type, 'Robot');
   assert.equal(bot.text, 'Spark, Voxel Bot, Robot');
+});
+
+test('canCollide enforces asymmetric companion collision exclusion rule', () => {
+  const npc = { id: 'npc1', isPlayer: false, isCompanion: false };
+  const otherNpc = { id: 'npc2', isPlayer: false, isCompanion: false };
+  const player = { id: 'player', isPlayer: true, isCompanion: false };
+  const companion = { id: 'comp1', isPlayer: false, isCompanion: true };
+  const otherCompanion = { id: 'comp2', isPlayer: false, isCompanion: true };
+
+  // Walking NPC is NOT blocked by a companion (can walk through)
+  assert.equal(canCollide(npc, companion), false);
+
+  // Companion IS blocked by an NPC (cannot walk through)
+  assert.equal(canCollide(companion, npc), true);
+
+  // Companion is blocked by the player and other companions
+  assert.equal(canCollide(companion, player), true);
+  assert.equal(canCollide(companion, otherCompanion), true);
+
+  // Player collides with NPC and companion (initiates dialogue)
+  assert.equal(canCollide(player, npc), true);
+  assert.equal(canCollide(player, companion), true);
+
+  // NPCs collide with other NPCs and the player
+  assert.equal(canCollide(npc, otherNpc), true);
+  assert.equal(canCollide(npc, player), true);
+
+  // Self cannot collide with self
+  assert.equal(canCollide(npc, npc), false);
+  assert.equal(canCollide(companion, companion), false);
 });
 
 test('the game module loads', () => {
