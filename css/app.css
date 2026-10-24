@@ -150,6 +150,16 @@ body.wizard-open canvas#world {
   gap: 7px;
 }
 
+.topbar-actions .pill {
+  min-width: 36px;
+  padding: 8px 11px;
+}
+
+.topbar-actions .pill .icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

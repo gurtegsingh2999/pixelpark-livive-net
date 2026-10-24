@@ -341,9 +341,11 @@ function ensureGame() {
 
 function updateWanderButton() {
   const button = $('wander-toggle');
+  if (!button) return;
   const on = Boolean(game?.wander);
   button.setAttribute('aria-pressed', String(on));
-  button.querySelector('.label').textContent = on ? 'Wander on' : 'Wander paused';
+  const label = button.querySelector('.label');
+  if (label) label.textContent = on ? 'Wander on' : 'Wander paused';
 }
 
 function updateMeta() {
@@ -680,13 +682,26 @@ function removeCardCharacter() {
 }
 
 function bindEvents() {
-  $('wander-toggle').addEventListener('click', toggleWander);
-  $('add-npc').addEventListener('click', addNeighbour);
-  $('new-park').addEventListener('click', () => {
+  $('wander-toggle')?.addEventListener('click', toggleWander);
+  $('add-npc')?.addEventListener('click', addNeighbour);
+  $('new-park')?.addEventListener('click', () => {
     if (!window.confirm('Start a new park? Your current park and neighbours will be replaced.')) return;
     clearSave();
     entered = false;
     openWizard({ fresh: true });
+  });
+
+  $('companion-toggle')?.addEventListener('click', () => {
+    const playerComp = game?.companions?.find(c => c.buddyId === 'player');
+    if (playerComp) {
+      panels?.showCard(playerComp);
+    } else {
+      showToast('No companions following you right now.');
+    }
+  });
+
+  $('debug-toggle')?.addEventListener('click', () => {
+    openDebugMenu();
   });
 
   $('npc-shuffle').addEventListener('click', rerollCardCharacter);
