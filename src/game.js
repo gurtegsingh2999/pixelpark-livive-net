@@ -575,6 +575,16 @@ export class Game {
     return blocked;
   }
 
+  isCharacterOnMiniGameBoard(character) {
+    if (!character) return false;
+    for (const game of this.miniGames) {
+      if (game.isOpen?.() && game.isTileOnBoard?.(character.x, character.y)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   updateCompanion(comp, dt) {
     if (comp.cheerTimer > 0) {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
@@ -591,9 +601,12 @@ export class Game {
       return;
     }
 
-    // During active mini-games, companions only move if they are navigating to their staged spectator position
+    // During active mini-games, companions only move if they are navigating to their staged spectator position,
+    // OR if they are currently standing on the board and need to escape/walk off
     const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
-    if (isMiniGameActive) {
+    const isTrappedOnBoard = isMiniGameActive && this.isCharacterOnMiniGameBoard(comp);
+
+    if (isMiniGameActive && !isTrappedOnBoard) {
       if (comp.stagedDestination) {
         if (comp.x === comp.stagedDestination.x && comp.y === comp.stagedDestination.y) {
           comp.stagedDestination = null;

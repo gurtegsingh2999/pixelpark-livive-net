@@ -97,16 +97,17 @@ export class TicTacToeMiniGame {
     }
     player.direction = 1; // Facing right toward board
 
-    // Auto-walk Player's companion to left of Tile 1
-    const playerComp = this.game.getCompanionFor(player.id);
-    if (playerComp) {
-      playerComp.fetchTarget = null;
-      playerComp.stagedDestination = playerCompTarget;
-      const pCompPath = findPath(this.game.terrain, { x: playerComp.x, y: playerComp.y }, playerCompTarget);
-      if (pCompPath.length) playerComp.path = pCompPath;
-      else { playerComp.x = playerCompTarget.x; playerComp.y = playerCompTarget.y; }
-      playerComp.direction = 1;
-    }
+    // Auto-walk all active Player companions to spectator positions
+    const playerComps = this.game.getCompanionsFor?.('player') || [];
+    playerComps.forEach((comp, idx) => {
+      const target = { x: spot.originX - 1, y: spot.originY + 2 + idx };
+      comp.fetchTarget = null;
+      comp.stagedDestination = target;
+      const compPath = findPath(this.game.terrain, { x: comp.x, y: comp.y }, target);
+      if (compPath.length) comp.path = compPath;
+      else { comp.x = target.x; comp.y = target.y; }
+      comp.direction = 1;
+    });
 
     // Auto-walk Opponent directly to right of Tile 6
     if (opponent) {
@@ -130,7 +131,7 @@ export class TicTacToeMiniGame {
     }
 
     // Flee bystanders (NPCs and companions) caught standing on the newly launched board
-    this.evacuateBoard(spot.originX, spot.originY, [player, playerComp, opponent, oppComp]);
+    this.evacuateBoard(spot.originX, spot.originY, [player, ...playerComps, opponent, oppComp]);
 
     this.activeBoard = {
       originX: spot.originX,
@@ -217,19 +218,23 @@ export class TicTacToeMiniGame {
   }
 
   blocksStep(character, nx, ny) {
-    if (!this.isOpen() || !this.isTileOnBoard(nx, ny)) return false;
+    if (!this.isOpen()) return false;
     const isPlayer = character === this.game.player;
     const isOpponent = character === this.activeBoard?.opponent;
     const isStagingCompanion = character.isCompanion && Boolean(character.stagedDestination);
+    if (isPlayer || isOpponent || isStagingCompanion) return false;
 
-    // If an NPC or companion is currently standing on the board (e.g. escaping / fleeing),
-    // allow them to step off the board rather than trapping them in place
+    // "Escape only" rule for bystanders (all other NPCs and companions):
+    // Characters already on the board are completely unrestricted and free to walk off.
+    // They are only blocked if they are off the board and attempting to walk onto it.
     const currentlyOnBoard = this.isTileOnBoard(character.x, character.y);
-    if (currentlyOnBoard && !this.isTileOnBoard(nx, ny)) {
-      return false; // Escaping off the board is always permitted
+    const destinationOnBoard = this.isTileOnBoard(nx, ny);
+
+    if (!currentlyOnBoard && destinationOnBoard) {
+      return true; // Blocked from entering the board
     }
 
-    return !isPlayer && !isOpponent && !isStagingCompanion;
+    return false; // Free to move anywhere else (including walking off the board)
   }
 
   isTileOnBoard(x, y) {
