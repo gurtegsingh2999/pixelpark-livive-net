@@ -56,7 +56,7 @@ export class PanelsUI {
     if (!TABS.includes(tabName)) return;
     this.activeTab = tabName;
     this.lastActiveTab = tabName;
-    this.focusedIndex = -1;
+    this.focusedIndex = 0;
 
     // Update active-tab styling on HUD buttons
     $('inventory-toggle')?.classList.toggle('active-tab', tabName === 'backpack');
@@ -79,7 +79,7 @@ export class PanelsUI {
     else if (tabName === 'stats') this.openStatsPanel();
     else if (tabName === 'debug') this.openDebugPanel();
 
-    this.removeVerticalFocus();
+    this.updateVerticalFocus();
   }
 
   closeMenu() {
@@ -118,8 +118,6 @@ export class PanelsUI {
     panel.hidden = false;
     $('inventory-toggle')?.setAttribute('aria-expanded', 'true');
     this.renderInventory();
-    // Do not auto-focus the first button so Enter doesn't trigger it immediately on menu open
-    this.removeVerticalFocus();
   }
 
   toggleInventoryPanel() {
@@ -676,7 +674,7 @@ export class PanelsUI {
         this.triggerFocusedAction();
         return;
       }
-    }, { capture: true });
+    });
   }
 
   bindEvents() {
