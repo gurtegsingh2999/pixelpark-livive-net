@@ -245,16 +245,8 @@ export class WorldRenderer {
     };
     const bottomTrim = (BOTTOM_OFFSETS[item.type] || 0) * height;
 
-    ctx.save();
-    // Subtle ground shadow beneath trees and bushes firmly at the trunk base
-    ctx.beginPath();
-    ctx.ellipse(footX, footY - 2, width * 0.28, height * 0.07, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(10, 18, 12, 0.32)';
-    ctx.fill();
-
-    // Draw image anchored at foot with bottom padding offset
+    // Draw scenery image cleanly without artificial oval shadow
     ctx.drawImage(img, footX - width / 2, footY - height + bottomTrim, width, height);
-    ctx.restore();
   }
 
   drawCharacter(game, character) {
