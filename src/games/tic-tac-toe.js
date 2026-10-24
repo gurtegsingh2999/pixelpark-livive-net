@@ -166,6 +166,33 @@ export class TicTacToeMiniGame {
     this.onToast(`New round! ${starterText}`);
   }
 
+  returnPlayerToBoard() {
+    const board = this.activeBoard;
+    if (!board || !this.game.player) return;
+    const player = this.game.player;
+    const targetX = board.originX - 1;
+    const targetY = board.originY + 1;
+
+    // Halt any current destination/movement
+    player.moving = false;
+    player.path = [];
+    if (this.game) {
+      this.game.heldKeys = [];
+      this.game.destination = null;
+    }
+
+    if (player.x !== targetX || player.y !== targetY) {
+      const pPath = findPath(this.game.terrain, { x: player.x, y: player.y }, { x: targetX, y: targetY });
+      if (pPath.length) {
+        player.path = pPath;
+      } else {
+        player.x = targetX;
+        player.y = targetY;
+      }
+    }
+    player.direction = 1; // Face right toward board
+  }
+
   walkOpponentToSideline() {
     const board = this.activeBoard;
     if (!board || !board.opponent) return;
@@ -353,7 +380,7 @@ export class TicTacToeMiniGame {
     }
 
     // Distance check: If player wanders more than 2 spaces away from board boundary
-    if (board.status === 'playing' && this.game.player && !this.abandonPromptActive) {
+    if (board.status === 'playing' && this.game.player && !this.abandonPromptActive && !this.returningToBoard) {
       const p = this.game.player;
       const minX = board.originX;
       const maxX = board.originX + 2;
@@ -366,16 +393,32 @@ export class TicTacToeMiniGame {
       const distBottom = p.y - maxY;
       const dist = Math.max(0, distLeft, distRight, distTop, distBottom);
 
-      if (dist > 2) {
+      // If returning to board, check if arrived back within boundary
+      if (dist <= 2) {
+        this.returningToBoard = false;
+      } else {
         this.abandonPromptActive = true;
         this.onAbandonPrompt(() => {
           // Confirm abandon
           this.abandonPromptActive = false;
+          this.returningToBoard = false;
           this.packUpBoard();
         }, () => {
-          // Cancel abandon, stay in game
+          // Cancel abandon, stay in game: walk player back to the game board sideline
           this.abandonPromptActive = false;
+          this.returningToBoard = true;
+          this.returnPlayerToBoard();
         });
+      }
+    } else if (this.returningToBoard && this.game.player) {
+      const p = this.game.player;
+      const minX = board.originX;
+      const maxX = board.originX + 2;
+      const minY = board.originY;
+      const maxY = board.originY + 2;
+      const dist = Math.max(0, minX - p.x, p.x - maxX, minY - p.y, p.y - maxY);
+      if (dist <= 2) {
+        this.returningToBoard = false;
       }
     }
 

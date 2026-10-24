@@ -58,3 +58,53 @@ test('TicTacToeMiniGame requires walkable margins around board', () => {
   fakeTerrain[10][13] = 'water'; // Right boundary tile
   assert.equal(game.canPlaceAt(10, 10), false);
 });
+
+test('TicTacToeMiniGame handles keep playing without looping abandon prompt', () => {
+  let promptCount = 0;
+  let cancelCb = null;
+  const fakeTerrain = Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'grass'));
+  const fakeGame = {
+    terrain: fakeTerrain,
+    player: { x: 20, y: 20, moving: false, path: [] },
+    heldKeys: [],
+    destination: null
+  };
+  const ttt = new TicTacToeMiniGame({
+    game: fakeGame,
+    onToast: () => {},
+    onAbandonPrompt: (confirm, cancel) => {
+      promptCount++;
+      cancelCb = cancel;
+    }
+  });
+  ttt.activeBoard = {
+    originX: 10,
+    originY: 10,
+    sidelineX: 13,
+    sidelineY: 11,
+    status: 'playing',
+    turn: 'player'
+  };
+
+  // 1st tick: player is far away, prompt fires once
+  ttt.update(0.016);
+  assert.equal(promptCount, 1);
+
+  // User chooses "Keep playing"
+  cancelCb();
+  assert.equal(ttt.returningToBoard, true);
+  assert.ok(fakeGame.player.path.length > 0);
+
+  // Next ticks while returning: prompt must not fire again
+  ttt.update(0.016);
+  ttt.update(0.016);
+  assert.equal(promptCount, 1);
+
+  // Once player arrives back within boundary:
+  fakeGame.player.x = 9;
+  fakeGame.player.y = 11;
+  fakeGame.player.path = [];
+  ttt.update(0.016);
+  assert.equal(ttt.returningToBoard, false);
+  assert.equal(promptCount, 1);
+});
