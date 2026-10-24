@@ -124,7 +124,8 @@ GitHub Pages serves the repository root. `CNAME` maps it to `pp.livive.net`. Pus
 `main` is the deployment step; do not add a build pipeline unless the project actually
 needs one.
 
-## Licenses
+## Licenses & Attributions
 
 - Application code: MIT (`LICENSE`).
-- DiceBear Voxel Art style: CC0 1.0. See `README.md` for attribution.
+- Character avatars: [DiceBear](https://www.dicebear.com/) (Voxel Art & companion avatar styles, CC0 1.0).
+- 3D Cube World pets & creatures: [Quaternius](https://quaternius.com/) (CC0 / Public Domain), rasterized offline via `scripts/render_cubeworld_pets.py`. See `README.md` for details.

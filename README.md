@@ -169,12 +169,10 @@ tile reservation/collision helpers, facing/mirroring rules, avatar determinism, 
 generation. `src/game.js` is intentionally import-safe in Node so the module can at least
 be smoke-tested without a browser.
 
-## DiceBear attribution
+## Attributions & Credits
 
-The [Voxel Art](https://www.dicebear.com/styles/voxel-art/) style is by
-[DiceBear](https://www.dicebear.com) and licensed under
-[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The vendored bundle is
-generated from `@dicebear/core` and `@dicebear/styles` in `vendor-src/dicebear.js`.
+- **[DiceBear](https://www.dicebear.com/)**: Character avatars and companion styles ([Voxel Art](https://www.dicebear.com/styles/voxel-art/), Clay, Critters, Gaze, Sprouts, and Bot) are provided by [DiceBear](https://www.dicebear.com/) and licensed under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The bundle is vendored locally into `vendor/dicebear-voxel.js`.
+- **[Quaternius](https://quaternius.com/)**: Cube World animal pets and fantasy creature 3D voxel models are created by [Quaternius](https://quaternius.com/) (CC0 / Public Domain), pre-rendered offline into directional voxel sprite sheets (`data/cubeworld_pets.json`) using our standalone software rasterizer (`scripts/render_cubeworld_pets.py`).
 
 ## Deployment
 
