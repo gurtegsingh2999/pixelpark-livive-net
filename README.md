@@ -173,7 +173,7 @@ be smoke-tested without a browser.
 
 - **[DiceBear](https://www.dicebear.com/)**: Character avatars and companion styles ([Voxel Art](https://www.dicebear.com/styles/voxel-art/), Clay, Critters, Gaze, Sprouts, and Bot) are provided by [DiceBear](https://www.dicebear.com/) and licensed under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The bundle is vendored locally into `vendor/dicebear-voxel.js`.
 - **[Quaternius](https://quaternius.com/)**: Cube World animal pets and fantasy creature 3D voxel models are created by [Quaternius](https://quaternius.com/) (CC0 / Public Domain), pre-rendered offline into directional voxel sprite sheets (`data/cubeworld_pets.json`) using our standalone software rasterizer (`scripts/render_cubeworld_pets.py`).
-- **[Kitbitz](https://kitbitz.art/)**: Illustrated park nature scenery (Apple Trees, Puffy Birch Trees, Chestnut Trees, and Flowering Bushes) from the [Nature Kit](https://kitbitz.art/search?kit=nature-kit&color=green) are licensed under [CC0 1.0 Universal (Public Domain)](https://creativecommons.org/publicdomain/zero/1.0/).
+- **[Kitbitz](https://kitbitz.art/)**: Illustrated park nature scenery (Apple Trees, Puffy Birch Trees, Chestnut Trees, Flowering Bushes, Boulders, Red Flowers, Forest Mushrooms, and Grass Tufts) from the [Nature Kit](https://kitbitz.art/kits/nature-kit) are provided by [Kitbitz](https://kitbitz.art/) and licensed under [CC0 1.0 Universal (Public Domain)](https://creativecommons.org/publicdomain/zero/1.0/).
 
 ## Deployment
 

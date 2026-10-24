@@ -225,9 +225,22 @@ export class WorldRenderer {
     if (!img || !img.complete) return;
 
     const isTree = item.type.includes('tree');
-    // Trees stand taller (e.g. 2.4 - 3.2 tiles tall), bushes are compact (1.0 - 1.4 tiles tall)
-    const baseW = isTree ? TILE * 2.5 : TILE * 1.5;
-    const baseH = isTree ? TILE * 3.0 : TILE * 1.4;
+    const isBushOrRock = item.type.includes('bush') || item.type.includes('rock');
+
+    // Trees stand tall (2.5 - 3.2 tiles), bushes and boulders are medium (1.4 - 1.5 tiles),
+    // ground cover (flowers, mushrooms, grass) is compact (0.7 - 0.9 tiles)
+    let baseW;
+    let baseH;
+    if (isTree) {
+      baseW = TILE * 2.5;
+      baseH = TILE * 3.0;
+    } else if (isBushOrRock) {
+      baseW = TILE * 1.5;
+      baseH = TILE * 1.4;
+    } else {
+      baseW = TILE * 0.8;
+      baseH = TILE * 0.8;
+    }
 
     const width = baseW * (item.scale || 1);
     const height = baseH * (item.scale || 1);
@@ -235,13 +248,18 @@ export class WorldRenderer {
     const footX = (item.x + 0.5) * TILE;
     const footY = (item.y + 1) * TILE;
 
-    // Compensate for transparent padding at the bottom of the source images so trunks plant firmly on the ground
+    // Compensate for transparent padding at the bottom of source images so objects plant firmly on the ground
     const BOTTOM_OFFSETS = {
       'apple-tree': 0.148,
       'chestnut-tree': 0.107,
       'puffy-tree': 0.086,
       'rounded-bush': 0.068,
-      'flowering-bush': 0.0
+      'flowering-bush': 0.0,
+      'rock-boulder': 0.0,
+      'mushroom': 0.0,
+      'mushroom-cluster': 0.0,
+      'flower-red': 0.088,
+      'grass-tuft': 0.0
     };
     const bottomTrim = (BOTTOM_OFFSETS[item.type] || 0) * height;
 

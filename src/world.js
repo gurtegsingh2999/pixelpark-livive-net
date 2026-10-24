@@ -231,15 +231,26 @@ export function generateWorld(seed) {
 
 export function generateScenery(grid, seed, spawn = { x: 32, y: 32 }) {
   const random = mulberry32(hashString(`scenery:${seed}`));
-  const types = ['apple-tree', 'puffy-tree', 'chestnut-tree', 'rounded-bush', 'flowering-bush'];
+  const types = [
+    'apple-tree',
+    'puffy-tree',
+    'chestnut-tree',
+    'rounded-bush',
+    'flowering-bush',
+    'rock-boulder',
+    'mushroom',
+    'mushroom-cluster',
+    'flower-red',
+    'grass-tuft'
+  ];
   const items = [];
   const occupied = new Set([`${spawn.x},${spawn.y}`]);
 
-  // Scatter 30-45 trees and bushes on grass and field tiles away from spawn
-  const targetCount = 35 + Math.floor(random() * 15);
+  // Scatter 60-80 scenery items (trees, bushes, rocks, flowers, mushrooms, grass) across grass and field tiles
+  const targetCount = 60 + Math.floor(random() * 25);
   let attempts = 0;
 
-  while (items.length < targetCount && attempts < 800) {
+  while (items.length < targetCount && attempts < 1200) {
     attempts++;
     const x = Math.floor(random() * WORLD_SIZE);
     const y = Math.floor(random() * WORLD_SIZE);
@@ -249,13 +260,26 @@ export function generateScenery(grid, seed, spawn = { x: 32, y: 32 }) {
     if (Math.hypot(x - spawn.x, y - spawn.y) < 3) continue;
 
     const tile = grid[y]?.[x];
-    // Place mostly on grass or flower fields (not dirt paths or water)
+    // Place on grass or flower fields (not dirt paths or water)
     if (tile !== 'grass' && tile !== 'field') continue;
 
     const type = types[Math.floor(random() * types.length)];
     const isTree = type.includes('tree');
-    // Subtle size variation
-    const scale = isTree ? (0.85 + random() * 0.3) : (0.75 + random() * 0.25);
+    const isBushOrRock = type.includes('bush') || type.includes('rock');
+    
+    // Scale variation appropriate for each asset category
+    let scale;
+    if (isTree) {
+      scale = 0.85 + random() * 0.3;
+    } else if (isBushOrRock) {
+      scale = 0.8 + random() * 0.25;
+    } else {
+      // Ground cover (mushrooms, flowers, grass tufts)
+      scale = 0.75 + random() * 0.3;
+    }
+
+    // Only trees and large boulders block pathfinding; flowers, grass, mushrooms, bushes are walkable
+    const isObstacle = isTree || type === 'rock-boulder';
 
     items.push({
       id: `scenery-${items.length}`,
@@ -263,7 +287,7 @@ export function generateScenery(grid, seed, spawn = { x: 32, y: 32 }) {
       x,
       y,
       scale,
-      isObstacle: isTree
+      isObstacle
     });
 
     occupied.add(key);
