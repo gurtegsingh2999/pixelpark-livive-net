@@ -235,15 +235,25 @@ export class WorldRenderer {
     const footX = (item.x + 0.5) * TILE;
     const footY = (item.y + 1) * TILE;
 
+    // Compensate for transparent padding at the bottom of the source images so trunks plant firmly on the ground
+    const BOTTOM_OFFSETS = {
+      'apple-tree': 0.148,
+      'chestnut-tree': 0.107,
+      'puffy-tree': 0.086,
+      'rounded-bush': 0.068,
+      'flowering-bush': 0.0
+    };
+    const bottomTrim = (BOTTOM_OFFSETS[item.type] || 0) * height;
+
     ctx.save();
-    // Subtle ground shadow beneath trees and bushes
+    // Subtle ground shadow beneath trees and bushes firmly at the trunk base
     ctx.beginPath();
-    ctx.ellipse(footX, footY - 2, width * 0.28, height * 0.08, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(10, 18, 12, 0.28)';
+    ctx.ellipse(footX, footY - 2, width * 0.28, height * 0.07, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 18, 12, 0.32)';
     ctx.fill();
 
-    // Draw image anchored at foot
-    ctx.drawImage(img, footX - width / 2, footY - height, width, height);
+    // Draw image anchored at foot with bottom padding offset
+    ctx.drawImage(img, footX - width / 2, footY - height + bottomTrim, width, height);
     ctx.restore();
   }
 
