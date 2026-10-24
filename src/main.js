@@ -698,19 +698,6 @@ function bindEvents() {
     openWizard({ fresh: true });
   });
 
-  $('companion-toggle')?.addEventListener('click', () => {
-    const playerComp = game?.companions?.find(c => c.buddyId === 'player');
-    if (playerComp) {
-      panels?.showCard(playerComp);
-    } else {
-      showToast('No companions following you right now.');
-    }
-  });
-
-  $('debug-toggle')?.addEventListener('click', () => {
-    openDebugMenu();
-  });
-
   $('npc-shuffle').addEventListener('click', rerollCardCharacter);
   $('npc-remove').addEventListener('click', removeCardCharacter);
 
@@ -720,7 +707,7 @@ function bindEvents() {
       dialogue.close();
       return;
     }
-    panels?.closeAllPanels();
+    panels?.closeMenu();
   });
 
   window.addEventListener('pagehide', saveNow);

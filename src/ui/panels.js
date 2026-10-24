@@ -56,7 +56,7 @@ export class PanelsUI {
     if (!TABS.includes(tabName)) return;
     this.activeTab = tabName;
     this.lastActiveTab = tabName;
-    this.focusedIndex = 0;
+    this.focusedIndex = -1;
 
     // Update active-tab styling on HUD buttons
     $('inventory-toggle')?.classList.toggle('active-tab', tabName === 'backpack');
@@ -79,7 +79,7 @@ export class PanelsUI {
     else if (tabName === 'stats') this.openStatsPanel();
     else if (tabName === 'debug') this.openDebugPanel();
 
-    this.updateVerticalFocus();
+    this.removeVerticalFocus();
   }
 
   closeMenu() {
@@ -118,6 +118,8 @@ export class PanelsUI {
     panel.hidden = false;
     $('inventory-toggle')?.setAttribute('aria-expanded', 'true');
     this.renderInventory();
+    // Do not auto-focus the first button so Enter doesn't trigger it immediately on menu open
+    this.removeVerticalFocus();
   }
 
   toggleInventoryPanel() {
@@ -573,6 +575,14 @@ export class PanelsUI {
     return rows;
   }
 
+  removeVerticalFocus() {
+    this.focusedIndex = -1;
+    document.querySelectorAll('.friend-row.nav-focused').forEach(r => r.classList.remove('nav-focused'));
+    if (document.activeElement && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }
+
   updateVerticalFocus() {
     const items = this.getActiveActionElements();
     if (!items.length) return;
@@ -597,13 +607,17 @@ export class PanelsUI {
   navigateVertical(direction) {
     const items = this.getActiveActionElements();
     if (!items.length) return;
-    this.focusedIndex = (this.focusedIndex + direction + items.length) % items.length;
+    if (this.focusedIndex === -1) {
+      this.focusedIndex = direction > 0 ? 0 : items.length - 1;
+    } else {
+      this.focusedIndex = (this.focusedIndex + direction + items.length) % items.length;
+    }
     this.updateVerticalFocus();
   }
 
   triggerFocusedAction() {
     const items = this.getActiveActionElements();
-    if (!items.length) return;
+    if (!items.length || this.focusedIndex === -1) return;
     const item = items[this.focusedIndex];
     if (item instanceof HTMLButtonElement) {
       item.click();
