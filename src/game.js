@@ -115,6 +115,8 @@ export class Game {
       recipe: input.recipe,
       vibe: input.vibe || '',
       inventory: Array.isArray(input.inventory) ? input.inventory : [],
+      coins: Number.isFinite(input.coins) ? input.coins : 0,
+      stabledCompanions: Array.isArray(input.stabledCompanions) ? input.stabledCompanions : [],
       isPlayer,
       x,
       y,
@@ -162,14 +164,18 @@ export class Game {
   }
 
   triggerCheer(buddyId, duration = 1.4) {
-    const comp = this.getCompanionFor(buddyId);
-    if (comp) {
+    const comps = this.getCompanionsFor(buddyId);
+    for (const comp of comps) {
       comp.cheerTimer = duration;
     }
   }
 
   getCompanionFor(buddyId) {
     return this.companions.find(comp => comp.buddyId === buddyId) || null;
+  }
+
+  getCompanionsFor(buddyId) {
+    return this.companions.filter(comp => comp.buddyId === buddyId);
   }
 
   setWorld({ terrain, worldSeed, player, npcs, companions = [], wander = true }) {
@@ -587,10 +593,20 @@ export class Game {
 
       if (!buddy) return;
 
-      const dist = Math.hypot(buddy.x - comp.x, buddy.y - comp.y);
+      // For multiple player companions, trail in an entourage behind the buddy or previous companion
+      let leader = buddy;
+      if (comp.buddyId === 'player') {
+        const playerComps = this.getCompanionsFor('player');
+        const index = playerComps.indexOf(comp);
+        if (index > 0 && playerComps[index - 1]) {
+          leader = playerComps[index - 1];
+        }
+      }
+
+      const dist = Math.hypot(leader.x - comp.x, leader.y - comp.y);
       if (dist <= 1.5) return;
 
-      target = { x: buddy.x, y: buddy.y };
+      target = { x: leader.x, y: leader.y };
     }
 
     // Path or step toward target

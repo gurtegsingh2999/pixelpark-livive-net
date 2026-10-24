@@ -70,26 +70,33 @@ test('formatCompanionInfo formats companion name, class, and type', () => {
   assert.equal(bot.text, 'Spark, Voxel Bot, Robot');
 });
 
-test('canCollide enforces asymmetric companion collision exclusion rule', () => {
+test('canCollide enforces player companion no-collision rule and asymmetric NPC companion rules', () => {
   const npc = { id: 'npc1', isPlayer: false, isCompanion: false };
   const otherNpc = { id: 'npc2', isPlayer: false, isCompanion: false };
   const player = { id: 'player', isPlayer: true, isCompanion: false };
-  const companion = { id: 'comp1', isPlayer: false, isCompanion: true };
-  const otherCompanion = { id: 'comp2', isPlayer: false, isCompanion: true };
+  const npcCompanion = { id: 'comp1', buddyId: 'npc1', isPlayer: false, isCompanion: true };
+  const otherNpcCompanion = { id: 'comp2', buddyId: 'npc2', isPlayer: false, isCompanion: true };
+  const playerCompanion = { id: 'comp-player', buddyId: 'player', isPlayer: false, isCompanion: true };
 
-  // Walking NPC is NOT blocked by a companion (can walk through)
-  assert.equal(canCollide(npc, companion), false);
+  // Player's companions NEVER collide with anyone or anything
+  assert.equal(canCollide(playerCompanion, player), false);
+  assert.equal(canCollide(player, playerCompanion), false);
+  assert.equal(canCollide(playerCompanion, npc), false);
+  assert.equal(canCollide(npc, playerCompanion), false);
+  assert.equal(canCollide(playerCompanion, npcCompanion), false);
 
-  // Companion IS blocked by an NPC (cannot walk through)
-  assert.equal(canCollide(companion, npc), true);
+  // Walking NPC is NOT blocked by an NPC companion (can walk through)
+  assert.equal(canCollide(npc, npcCompanion), false);
 
-  // Companion is blocked by the player and other companions
-  assert.equal(canCollide(companion, player), true);
-  assert.equal(canCollide(companion, otherCompanion), true);
+  // NPC Companion IS blocked by an NPC (cannot walk through)
+  assert.equal(canCollide(npcCompanion, npc), true);
 
-  // Player collides with NPC and companion (initiates dialogue)
+  // NPC Companion is blocked by the player and other NPC companions
+  assert.equal(canCollide(npcCompanion, player), true);
+  assert.equal(canCollide(npcCompanion, otherNpcCompanion), true);
+
+  // Player collides with NPC
   assert.equal(canCollide(player, npc), true);
-  assert.equal(canCollide(player, companion), true);
 
   // NPCs collide with other NPCs and the player
   assert.equal(canCollide(npc, otherNpc), true);
@@ -97,7 +104,7 @@ test('canCollide enforces asymmetric companion collision exclusion rule', () => 
 
   // Self cannot collide with self
   assert.equal(canCollide(npc, npc), false);
-  assert.equal(canCollide(companion, companion), false);
+  assert.equal(canCollide(npcCompanion, npcCompanion), false);
 });
 
 test('the game module loads', () => {

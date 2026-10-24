@@ -133,6 +133,20 @@ export class PanelsUI {
 
     const game = this.getGame();
     const inventory = game?.player?.inventory || [];
+    const coins = game?.player?.coins || 0;
+
+    // Coin banner
+    const coinRow = document.createElement('div');
+    coinRow.className = 'panel-note';
+    coinRow.style.display = 'flex';
+    coinRow.style.alignItems = 'center';
+    coinRow.style.gap = '6px';
+    coinRow.style.margin = '0 0 10px 0';
+    coinRow.style.fontWeight = '600';
+    coinRow.style.color = 'var(--accent)';
+    coinRow.textContent = `Wallet: 🪙 ${coins} Coins`;
+    list.append(coinRow);
+
     if (!inventory.length) {
       const empty = document.createElement('p');
       empty.className = 'friend-empty';
@@ -193,10 +207,11 @@ export class PanelsUI {
     list.replaceChildren();
 
     const game = this.getGame();
-    const companion = game?.companions?.find(c => c.buddyId === 'player');
+    const activeCompanions = game?.getCompanionsFor ? game.getCompanionsFor('player') : [];
+    const stabledCompanions = Array.isArray(game?.player?.stabledCompanions) ? game.player.stabledCompanions : [];
     const summary = $('companion-summary');
 
-    if (!companion) {
+    if (!activeCompanions.length && !stabledCompanions.length) {
       if (summary) summary.textContent = 'No companions currently following you.';
       const empty = document.createElement('p');
       empty.className = 'friend-empty';
@@ -205,33 +220,106 @@ export class PanelsUI {
       return;
     }
 
-    const info = formatCompanionInfo(companion);
     if (summary) {
-      summary.textContent = `${companion.name} the ${info.type} · ${info.class}`;
+      summary.textContent = `Active Party: ${activeCompanions.length}/3 companions following you.`;
     }
 
-    const row = document.createElement('div');
-    row.className = 'friend-row';
-    row.setAttribute('role', 'listitem');
-    row.tabIndex = 0;
+    const fragment = document.createDocumentFragment();
 
-    const image = document.createElement('img');
-    bindAnimatedAvatar(image, companion.recipe, 0);
-    image.alt = companion.name;
+    // Active companions
+    for (const companion of activeCompanions) {
+      const info = formatCompanionInfo(companion);
+      const row = document.createElement('div');
+      row.className = 'friend-row';
+      row.setAttribute('role', 'listitem');
+      row.tabIndex = 0;
 
-    const copy = document.createElement('div');
-    const name = document.createElement('strong');
-    name.textContent = `${companion.name} (${info.type})`;
-    const sub = document.createElement('small');
-    sub.textContent = `${info.class} · Following you`;
-    copy.append(name, sub);
+      const image = document.createElement('img');
+      bindAnimatedAvatar(image, companion.recipe, 0);
+      image.alt = companion.name;
 
-    row.addEventListener('click', () => {
-      this.showCard(companion);
-    });
+      const copy = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = `${companion.name} (${info.type})`;
+      const sub = document.createElement('small');
+      sub.textContent = `${info.class} · Active follower (Click to inspect / bench)`;
+      copy.append(name, sub);
 
-    row.append(image, copy);
-    list.append(row);
+      row.addEventListener('click', () => {
+        if (activeCompanions.length > 1) {
+          // Allow toggling between active and stabled
+          game.companions = game.companions.filter(c => c.id !== companion.id);
+          if (!game.player.stabledCompanions) game.player.stabledCompanions = [];
+          game.player.stabledCompanions.push({
+            id: companion.id,
+            name: companion.name,
+            recipe: companion.recipe,
+            buddyId: 'player'
+          });
+          this.renderCompanion();
+          this.onSave?.();
+        } else {
+          this.showCard(companion);
+        }
+      });
+
+      row.append(image, copy);
+      fragment.append(row);
+    }
+
+    // Stabled reserve companions
+    if (stabledCompanions.length) {
+      const header = document.createElement('p');
+      header.className = 'panel-note';
+      header.style.marginTop = '12px';
+      header.textContent = `Collection (${stabledCompanions.length}): Click to make active follower`;
+      fragment.append(header);
+
+      for (const stabled of stabledCompanions) {
+        const info = formatCompanionInfo(stabled);
+        const row = document.createElement('div');
+        row.className = 'friend-row';
+        row.style.opacity = '0.75';
+        row.setAttribute('role', 'listitem');
+        row.tabIndex = 0;
+
+        const image = document.createElement('img');
+        bindAnimatedAvatar(image, stabled.recipe, 0);
+        image.alt = stabled.name;
+
+        const copy = document.createElement('div');
+        const name = document.createElement('strong');
+        name.textContent = `${stabled.name} (${info.type})`;
+        const sub = document.createElement('small');
+        sub.textContent = `${info.class} · Resting in collection`;
+        copy.append(name, sub);
+
+        row.addEventListener('click', () => {
+          if (activeCompanions.length >= 3) {
+            // Swap with first active companion
+            const removed = activeCompanions[0];
+            game.companions = game.companions.filter(c => c.id !== removed.id);
+            game.player.stabledCompanions.push({
+              id: removed.id,
+              name: removed.name,
+              recipe: removed.recipe,
+              buddyId: 'player'
+            });
+          }
+          // Remove from stabled and activate
+          game.player.stabledCompanions = game.player.stabledCompanions.filter(c => c.id !== stabled.id);
+          const activated = game.makeCompanion(stabled, game.player);
+          game.companions.push(activated);
+          this.renderCompanion();
+          this.onSave?.();
+        });
+
+        row.append(image, copy);
+        fragment.append(row);
+      }
+    }
+
+    list.append(fragment);
   }
 
   renderStats() {

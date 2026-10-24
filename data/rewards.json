@@ -1,0 +1,27 @@
+{
+  "miniGames": {
+    "tic-tac-toe": {
+      "win": {
+        "coins": 10,
+        "bonusRollChance": 0.4,
+        "bonusLootTable": "ttt_win_loot"
+      },
+      "draw": {
+        "coins": 3
+      },
+      "loss": {
+        "coins": 1
+      }
+    },
+    "fetch": {
+      "rewardCoins": 2
+    }
+  },
+  "lootTables": {
+    "ttt_win_loot": [
+      { "type": "companion", "weight": 4 },
+      { "type": "item", "weight": 3, "pool": ["ball", "tic-tac-toe"] },
+      { "type": "coins", "weight": 5, "amount": 15 }
+    ]
+  }
+}

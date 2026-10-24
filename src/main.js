@@ -24,6 +24,7 @@ import { SetupWizard } from './ui/wizard.js';
 import { PanelsUI } from './ui/panels.js';
 import engineConfig from '../data/engine_config.json' with { type: 'json' };
 import dialogueData from '../data/dialogues.json' with { type: 'json' };
+import { rollReward, applyReward } from './rewards.js';
 
 const MAX_NPCS = engineConfig.crowd.maxNpcs;
 const DEFAULT_CROWD = engineConfig.crowd.defaultCount;
@@ -154,7 +155,24 @@ function openWizard({ fresh = false } = {}) {
 function onTTTGameEnd(winner, opponent) {
   if (!opponent) return;
   const tttSpecs = dialogueData.dialogues.ttt;
-  const winText = winner === 'X' ? tttSpecs.win : (winner === 'O' ? tttSpecs.loss : tttSpecs.draw);
+  let outcome = 'draw';
+  if (winner === 'X') outcome = 'win';
+  else if (winner === 'O') outcome = 'loss';
+
+  let winText = winner === 'X' ? tttSpecs.win : (winner === 'O' ? tttSpecs.loss : tttSpecs.draw);
+
+  // Grant rewards if outcome rolled
+  const reward = rollReward(game, 'tic-tac-toe', outcome);
+  if (reward) {
+    const notices = applyReward(game, reward);
+    if (notices.length) {
+      winText += `\nRewards: ${notices.join(' · ')}`;
+      showToast(`Rewards: ${notices.join(' · ')}`);
+      if (winner === 'X') {
+        game.triggerCheer('player');
+      }
+    }
+  }
 
   const choices = tttSpecs.endChoices.map(c => ({
     label: c.label,
@@ -487,7 +505,9 @@ function applyState(state) {
     x: Number.isFinite(Number(state.player?.x)) ? Math.round(Number(state.player.x)) : 32,
     y: Number.isFinite(Number(state.player?.y)) ? Math.round(Number(state.player.y)) : 32,
     direction: state.player?.direction ?? 0,
-    inventory: state.player?.inventory || createStarterInventory()
+    inventory: state.player?.inventory || createStarterInventory(),
+    coins: Number.isFinite(state.player?.coins) ? state.player.coins : 0,
+    stabledCompanions: Array.isArray(state.player?.stabledCompanions) ? state.player.stabledCompanions : []
   };
   if (!isWalkable(terrain[rawPlayer.y]?.[rawPlayer.x])) {
     const spot = findOpenTile(terrain, { x: 32, y: 32 });

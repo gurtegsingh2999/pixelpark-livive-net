@@ -16,7 +16,9 @@ export function serializeSave(game, draft, friends) {
       x: game.player.x,
       y: game.player.y,
       direction: game.player.direction,
-      inventory: game.player.inventory || []
+      inventory: game.player.inventory || [],
+      coins: Number.isFinite(game.player.coins) ? game.player.coins : 0,
+      stabledCompanions: Array.isArray(game.player.stabledCompanions) ? game.player.stabledCompanions : []
     },
     npcs: game.npcs.map(npc => ({
       id: npc.id,
