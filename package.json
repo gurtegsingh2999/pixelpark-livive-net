@@ -8,6 +8,7 @@
     "vendor": "esbuild vendor-src/dicebear.js --bundle --format=esm --outfile=vendor/dicebear-voxel.js --minify --log-level=warning",
     "serve": "python3 -m http.server 4173",
     "start": "python3 -m http.server 4173",
+    "render:pets": "python3 scripts/render_cubeworld_pets.py",
     "test": "node --test"
   },
   "devDependencies": {

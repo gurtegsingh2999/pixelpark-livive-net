@@ -16,11 +16,12 @@ The repository root is the deployable site. There is no bundler or framework in 
 ## Commands
 
 ```sh
-./install.sh    # install dev dependencies
-./run.sh        # static server at http://localhost:4173
-npm start       # static server at http://localhost:4173
-npm test        # node:test suites in test/
-npm run vendor  # rebuild vendor/dicebear-voxel.js from vendor-src/dicebear.js
+./install.sh        # install dev dependencies
+./run.sh            # static server at http://localhost:4173
+npm start           # static server at http://localhost:4173
+npm test            # node:test suites in test/
+npm run vendor      # rebuild vendor/dicebear-voxel.js from vendor-src/dicebear.js
+npm run render:pets # re-render data/cubeworld_pets.json from assets/cubeworld-src
 ```
 
 `npm install` is only needed for `npm run vendor` or when changing dev tooling. Do not
@@ -45,6 +46,8 @@ commit `node_modules/`.
 | `src/games/tic-tac-toe.js` | In-world 3×3 Tic-Tac-Toe board on map tiles with turn-taking |
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
+| `scripts/render_cubeworld_pets.py` | Standalone 3D software rasterizer generating `data/cubeworld_pets.json` |
+| `data/cubeworld_pets.json` | Pre-rendered offline sprite sheets for Cube World animal companions |
 | `test/` | `node:test` suites for pure logic |
 
 Keep `src/game.js` import-safe in Node: no DOM access at module top level, only inside the
