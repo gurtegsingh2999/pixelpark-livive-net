@@ -593,7 +593,6 @@ export class PanelsUI {
 
     const item = items[this.focusedIndex];
     if (item instanceof HTMLButtonElement) {
-      item.focus({ preventScroll: false });
       item.closest('.friend-row')?.classList.add('nav-focused');
       item.closest('.friend-row')?.scrollIntoView?.({ block: 'nearest' });
     } else if (item) {
