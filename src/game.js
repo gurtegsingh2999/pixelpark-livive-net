@@ -576,6 +576,17 @@ export class Game {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
     }
 
+    if (comp.moving) {
+      comp.elapsed += dt;
+      if (comp.elapsed >= comp.duration) {
+        comp.x = comp.toX;
+        comp.y = comp.toY;
+        comp.moving = false;
+        comp.elapsed = 0;
+      }
+      return;
+    }
+
     // During active mini-games, companions only move if they are navigating to their staged spectator position
     const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
     if (isMiniGameActive) {
@@ -583,7 +594,6 @@ export class Game {
         if (comp.x === comp.stagedDestination.x && comp.y === comp.stagedDestination.y) {
           comp.stagedDestination = null;
           comp.path = [];
-          comp.moving = false;
           return;
         }
         if (comp.path && comp.path.length) {
@@ -593,22 +603,16 @@ export class Game {
           if (Math.abs(dx) + Math.abs(dy) === 1) {
             this.tryStep(comp, dx, dy, COMPANION_STEP);
           } else {
-            comp.path = [];
+            // Re-pathfind if direct step failed
+            const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination);
+            comp.path = repath.length ? repath : [];
           }
           return;
+        } else {
+          // If destination set but no path, calculate path
+          const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination);
+          comp.path = repath.length ? repath : [];
         }
-      }
-      comp.moving = false;
-      return;
-    }
-
-    if (comp.moving) {
-      comp.elapsed += dt;
-      if (comp.elapsed >= comp.duration) {
-        comp.x = comp.toX;
-        comp.y = comp.toY;
-        comp.moving = false;
-        comp.elapsed = 0;
       }
       return;
     }
