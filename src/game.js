@@ -594,6 +594,7 @@ export class Game {
         if (comp.x === comp.stagedDestination.x && comp.y === comp.stagedDestination.y) {
           comp.stagedDestination = null;
           comp.path = [];
+          comp.moving = false;
           return;
         }
         if (comp.path && comp.path.length) {
@@ -603,14 +604,32 @@ export class Game {
           if (Math.abs(dx) + Math.abs(dy) === 1) {
             this.tryStep(comp, dx, dy, COMPANION_STEP);
           } else {
-            // Re-pathfind if direct step failed
-            const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination);
+            // Re-pathfind around the board if direct step failed
+            const tttGame = this.miniGames.find(m => m.isTileOnBoard && m.isOpen && m.isOpen());
+            const blocked = new Set();
+            if (tttGame) {
+              for (let by = 0; by < 3; by++) {
+                for (let bx = 0; bx < 3; bx++) {
+                  blocked.add(`${tttGame.activeBoard.originX + bx},${tttGame.activeBoard.originY + by}`);
+                }
+              }
+            }
+            const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination, blocked);
             comp.path = repath.length ? repath : [];
           }
           return;
         } else {
-          // If destination set but no path or stuck, calculate path
-          const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination);
+          // If destination set but no path or stuck, calculate path around the board
+          const tttGame = this.miniGames.find(m => m.isTileOnBoard && m.isOpen && m.isOpen());
+          const blocked = new Set();
+          if (tttGame) {
+            for (let by = 0; by < 3; by++) {
+              for (let bx = 0; bx < 3; bx++) {
+                blocked.add(`${tttGame.activeBoard.originX + bx},${tttGame.activeBoard.originY + by}`);
+              }
+            }
+          }
+          const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, comp.stagedDestination, blocked);
           if (repath.length) {
             comp.path = repath;
           } else {
@@ -621,6 +640,7 @@ export class Game {
           }
         }
       }
+      comp.moving = false;
       return;
     }
 

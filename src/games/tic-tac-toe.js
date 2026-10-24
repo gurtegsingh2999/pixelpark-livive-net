@@ -69,69 +69,77 @@ export class TicTacToeMiniGame {
     const starter = this.nextStarter;
     this.nextStarter = starter === 'player' ? 'opponent' : 'player';
 
-    // Position opponent and companion on sideline: (originX + 3, originY + 1)
-    const sidelineX = spot.originX + 3;
-    const sidelineY = spot.originY + 1;
+    // 1.) Establish exact staging target coordinates around the 3x3 board:
+    // Middle row (Y = originY + 1):
+    //   Left of Tile 4:  (originX - 1, originY + 1) -> Player
+    //   Right of Tile 6: (originX + 3, originY + 1) -> Opponent
+    // Bottom row (Y = originY + 2):
+    //   Left of Tile 1:  (originX - 1, originY + 2) -> Player's Companion
+    //   Right of Tile 9: (originX + 3, originY + 2) -> Opponent's Companion
+    const playerTarget = { x: spot.originX - 1, y: spot.originY + 1 };
+    const playerCompTarget = { x: spot.originX - 1, y: spot.originY + 2 };
+    const opponentTarget = { x: spot.originX + 3, y: spot.originY + 1 };
+    const opponentCompTarget = { x: spot.originX + 3, y: spot.originY + 2 };
 
-    if (opponent) {
-      opponent.inMiniGame = true;
-      opponent.path = [];
-      opponent.moving = false;
-
-      // Opponent walks or stages to sideline
-      const oppPath = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: sidelineX, y: sidelineY });
-      if (oppPath.length) {
-        opponent.path = oppPath;
-      } else {
-        opponent.x = sidelineX;
-        opponent.y = sidelineY;
-      }
-      opponent.direction = 3; // Facing left toward board
-
-      // Opponent's companion stands on the tile to the right of tile 3 (sidelineY - 1)
-      // or to the right of tile 9 (sidelineY + 1):
-      // Sideline row is middle (to right of tile 6). So Y-1 is to right of top row (tile 3),
-      // and Y+1 is to right of bottom row (tile 9).
-      const opponentComp = this.game.getCompanionFor(opponent.id);
-      if (opponentComp) {
-        opponentComp.fetchTarget = null;
-        opponentComp.moving = false;
-        let oppCompY = sidelineY - 1;
-        if (!isWalkable(typeAt(this.game.terrain, sidelineX, oppCompY))) {
-          oppCompY = sidelineY + 1;
-        }
-        opponentComp.stagedDestination = { x: sidelineX, y: oppCompY };
-        const compPath = findPath(this.game.terrain, { x: opponentComp.x, y: opponentComp.y }, opponentComp.stagedDestination);
-        opponentComp.path = compPath.length ? compPath : [];
-        opponentComp.direction = 3;
+    // Block all 9 board tiles for staging pathfinding so characters walk around the board
+    const boardBlocked = new Set();
+    for (let dy = 0; dy < 3; dy++) {
+      for (let dx = 0; dx < 3; dx++) {
+        boardBlocked.add(`${spot.originX + dx},${spot.originY + dy}`);
       }
     }
 
-    // Player's companion stands strictly next to the PLAYER:
+    // Auto-walk Player to left of Tile 4
+    if (player.x !== playerTarget.x || player.y !== playerTarget.y) {
+      const pPath = findPath(this.game.terrain, { x: player.x, y: player.y }, playerTarget, boardBlocked);
+      if (pPath.length) player.path = pPath;
+      else { player.x = playerTarget.x; player.y = playerTarget.y; }
+    }
+    player.direction = 1; // Facing right toward board
+
+    // Auto-walk Player's companion to left of Tile 1
     const playerComp = this.game.getCompanionFor(player.id);
     if (playerComp) {
       playerComp.fetchTarget = null;
-      playerComp.moving = false;
-      let pCompY = player.y - 1;
-      if (!isWalkable(typeAt(this.game.terrain, player.x, pCompY))) {
-        pCompY = player.y + 1;
+      playerComp.stagedDestination = playerCompTarget;
+      const pCompPath = findPath(this.game.terrain, { x: playerComp.x, y: playerComp.y }, playerCompTarget, boardBlocked);
+      if (pCompPath.length) playerComp.path = pCompPath;
+      else { playerComp.x = playerCompTarget.x; playerComp.y = playerCompTarget.y; }
+      playerComp.direction = 1;
+    }
+
+    // Auto-walk Opponent to right of Tile 6
+    if (opponent) {
+      opponent.inMiniGame = true;
+      opponent.moving = false;
+      const oppPath = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, opponentTarget, boardBlocked);
+      if (oppPath.length) opponent.path = oppPath;
+      else { opponent.x = opponentTarget.x; opponent.y = opponentTarget.y; }
+      opponent.direction = 3; // Facing left toward board
+
+      // Auto-walk Opponent's companion to right of Tile 9
+      const oppComp = this.game.getCompanionFor(opponent.id);
+      if (oppComp) {
+        oppComp.fetchTarget = null;
+        oppComp.stagedDestination = opponentCompTarget;
+        const oppCompPath = findPath(this.game.terrain, { x: oppComp.x, y: oppComp.y }, opponentCompTarget, boardBlocked);
+        if (oppCompPath.length) oppComp.path = oppCompPath;
+        else { oppComp.x = opponentCompTarget.x; oppComp.y = opponentCompTarget.y; }
+        oppComp.direction = 3;
       }
-      playerComp.stagedDestination = { x: player.x, y: pCompY };
-      const pCompPath = findPath(this.game.terrain, { x: playerComp.x, y: playerComp.y }, playerComp.stagedDestination);
-      playerComp.path = pCompPath.length ? pCompPath : [];
     }
 
     this.activeBoard = {
       originX: spot.originX,
       originY: spot.originY,
-      sidelineX,
-      sidelineY,
+      sidelineX: opponentTarget.x,
+      sidelineY: opponentTarget.y,
       grid: Array(9).fill(null),
       opponent,
       turn: starter,
       winner: null,
       status: 'unfolding', // 'unfolding', 'playing', 'refolding', 'ended'
-      foldPhase: 0, // 0 = single center-left tile, 1 = col 0, 2 = col 0 & 1, 3 = full 3x3
+      foldPhase: 0,
       foldTimer: 0,
       thinkingTimer: starter === 'opponent' ? 0.8 : 0
     };
