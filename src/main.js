@@ -21,7 +21,7 @@ import {
   findOpenTile
 } from './world.js';
 import { PLAYER_NAMES, COMPANION_NAMES, pickName, pickVibe } from './names.js';
-import { serializeSave, saveState, loadSave, clearSave } from './storage.js';
+import { serializeSave, saveState, loadSave, clearSave, loadStats } from './storage.js';
 import { DialogueManager } from './dialogue.js';
 import { createStarterInventory } from './inventory.js';
 import { FetchMiniGame } from './games/fetch.js';
@@ -188,6 +188,91 @@ function updateFriendsUI() {
   if (!$('friends-panel').hidden) renderFriendList();
 }
 
+function closeStatsPanel() {
+  const panel = $('stats-panel');
+  if (panel) {
+    panel.hidden = true;
+    $('stats-toggle')?.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function renderStats() {
+  const list = $('stats-list');
+  if (!list) return;
+  list.replaceChildren();
+
+  const stats = loadStats();
+  const summary = $('stats-summary');
+  const totalGames = stats.totalWins + stats.totalLosses + stats.totalDraws;
+  const winRate = totalGames > 0 ? Math.round((stats.totalWins / totalGames) * 100) : 0;
+  if (summary) {
+    summary.textContent = `Overall Record: ${stats.totalWins}W - ${stats.totalLosses}L - ${stats.totalDraws}D (${winRate}% win rate across ${totalGames} matches)`;
+  }
+
+  const friendEntries = Object.entries(stats.friends || {});
+  if (!friendEntries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'friend-empty';
+    empty.textContent = 'No matches played yet. Ask a friend to play Tic-Tac-Toe!';
+    list.append(empty);
+    return;
+  }
+
+  // Sort by total wins or total games
+  friendEntries.sort((a, b) => (b[1].wins + b[1].losses + b[1].draws) - (a[1].wins + a[1].losses + a[1].draws));
+
+  const fragment = document.createDocumentFragment();
+  for (const [npcId, record] of friendEntries) {
+    const row = document.createElement('div');
+    row.className = 'friend-row';
+    row.setAttribute('role', 'listitem');
+
+    const npc = game?.getNpc(npcId);
+    let avatarEl;
+    if (npc?.recipe) {
+      avatarEl = document.createElement('img');
+      avatarEl.src = avatarDataUrl(npc.recipe);
+      avatarEl.alt = '';
+    } else {
+      avatarEl = document.createElement('span');
+      avatarEl.style.fontSize = '24px';
+      avatarEl.style.width = '44px';
+      avatarEl.style.height = '44px';
+      avatarEl.style.display = 'flex';
+      avatarEl.style.alignItems = 'center';
+      avatarEl.style.justifyContent = 'center';
+      avatarEl.textContent = '🏅';
+    }
+
+    const copy = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = record.name || npc?.name || 'Neighbour';
+    const sub = document.createElement('small');
+    sub.textContent = `${record.wins} Wins · ${record.losses} Losses · ${record.draws} Draws`;
+    copy.append(name, sub);
+
+    row.append(avatarEl, copy);
+    fragment.append(row);
+  }
+  list.append(fragment);
+}
+
+function toggleStatsPanel() {
+  const panel = $('stats-panel');
+  if (!panel) return;
+  const opening = panel.hidden;
+  if (!opening) {
+    closeStatsPanel();
+    return;
+  }
+  closeCard();
+  closeFriendsPanel();
+  closeInventoryPanel();
+  panel.hidden = false;
+  $('stats-toggle')?.setAttribute('aria-expanded', 'true');
+  renderStats();
+}
+
 function closeFriendsPanel() {
   $('friends-panel').hidden = true;
   $('friends-toggle').setAttribute('aria-expanded', 'false');
@@ -202,6 +287,7 @@ function toggleFriendsPanel() {
   }
   closeCard();
   closeInventoryPanel();
+  closeStatsPanel();
   panel.hidden = false;
   $('friends-toggle').setAttribute('aria-expanded', 'true');
   updateFriendsUI();
@@ -226,6 +312,7 @@ function toggleInventoryPanel() {
   }
   closeCard();
   closeFriendsPanel();
+  closeStatsPanel();
   panel.hidden = false;
   $('inventory-toggle').setAttribute('aria-expanded', 'true');
   renderInventory();
@@ -480,6 +567,33 @@ function closeWizard() {
   document.body.classList.remove('wizard-open');
 }
 
+function onTTTGameEnd(winner, opponent) {
+  if (!opponent) return;
+  // Re-open dialogue asking for rematch
+  const winText = winner === 'X'
+    ? `Great game! You won that round. Want to play again?`
+    : (winner === 'O' ? `Haha, gotcha! Good match. Want another round?` : `That was a tight draw! Want a rematch?`);
+
+  dialogue.openCustomBeat(opponent, winText, [
+    {
+      label: 'Play again',
+      className: 'primary',
+      onClick: () => {
+        dialogue.close();
+        tttGame?.resetRound();
+      }
+    },
+    {
+      label: 'Pack up',
+      className: 'pill quiet',
+      onClick: () => {
+        dialogue.close();
+        tttGame?.packUpBoard();
+      }
+    }
+  ]);
+}
+
 function handleActionKey(character) {
   if (tttGame?.isOpen()) {
     tttGame.handleAction(character);
@@ -504,7 +618,7 @@ function ensureGame() {
     });
 
     fetchGame = new FetchMiniGame({ game, onToast: showToast });
-    tttGame = new TicTacToeMiniGame({ game, onToast: showToast });
+    tttGame = new TicTacToeMiniGame({ game, onToast: showToast, onGameEnd: onTTTGameEnd });
     game.registerMiniGame(fetchGame);
     game.registerMiniGame(tttGame);
   }
@@ -894,6 +1008,8 @@ function bindEvents() {
 
   $('inventory-toggle')?.addEventListener('click', toggleInventoryPanel);
   $('inventory-close')?.addEventListener('click', closeInventoryPanel);
+  $('stats-toggle')?.addEventListener('click', toggleStatsPanel);
+  $('stats-close')?.addEventListener('click', closeStatsPanel);
 
   $('wander-toggle').addEventListener('click', toggleWander);
   $('friends-toggle').addEventListener('click', toggleFriendsPanel);
@@ -918,6 +1034,10 @@ function bindEvents() {
     }
     if (!$('inventory-panel').hidden) {
       closeInventoryPanel();
+      return;
+    }
+    if (!$('stats-panel').hidden) {
+      closeStatsPanel();
       return;
     }
     if (!$('friends-panel').hidden) {

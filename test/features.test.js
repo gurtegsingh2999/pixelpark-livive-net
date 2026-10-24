@@ -4,6 +4,7 @@ import { createStarterInventory, BALL_COLORS } from '../src/inventory.js';
 import { createCompanionRecipe, canonicalRecipe, COMPANION_STYLES } from '../src/avatar.js';
 import { TicTacToeMiniGame } from '../src/games/tic-tac-toe.js';
 import { FetchMiniGame } from '../src/games/fetch.js';
+import { recordGameResult, loadStats } from '../src/storage.js';
 
 test('createStarterInventory yields ball and tic-tac-toe', () => {
   const inv = createStarterInventory();
@@ -46,4 +47,14 @@ test('TicTacToeMiniGame maps cell correctly to 3x3 tiles', () => {
   assert.deepEqual(game.cellAtTile(11, 12), { row: 2, col: 1, index: 7 });
   assert.equal(game.cellAtTile(9, 10), null);
   assert.equal(game.cellAtTile(13, 10), null);
+});
+
+test('TicTacToeMiniGame requires walkable margins around board', () => {
+  const fakeTerrain = Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'grass'));
+  const game = new TicTacToeMiniGame({ game: { terrain: fakeTerrain } });
+  assert.equal(game.canPlaceAt(10, 10), true);
+
+  // Border violation (against water)
+  fakeTerrain[10][13] = 'water'; // Right boundary tile
+  assert.equal(game.canPlaceAt(10, 10), false);
 });

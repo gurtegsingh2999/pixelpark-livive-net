@@ -237,8 +237,16 @@ export class Game {
       direction: Number(input.direction) || 0,
       fetchTarget: null,
       carryingBall: false,
+      cheerTimer: 0,
       path: []
     };
+  }
+
+  triggerCheer(buddyId, duration = 1.4) {
+    const comp = this.getCompanionFor(buddyId);
+    if (comp) {
+      comp.cheerTimer = duration;
+    }
   }
 
   getCompanionFor(buddyId) {
@@ -490,6 +498,8 @@ export class Game {
   }
 
   updateNpc(npc, dt) {
+    if (npc.inMiniGame) return;
+
     if (npc.moving) {
       npc.elapsed += dt;
       if (npc.elapsed >= npc.duration) {
@@ -539,6 +549,10 @@ export class Game {
   }
 
   updateCompanion(comp, dt) {
+    if (comp.cheerTimer > 0) {
+      comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
+    }
+
     if (comp.moving) {
       comp.elapsed += dt;
       if (comp.elapsed >= comp.duration) {
@@ -679,7 +693,12 @@ export class Game {
     const footY = (position.y + 1) * TILE;
     const movingT = character.moving ? clamp(character.elapsed / character.duration, 0, 1) : 0;
     const idle = Math.sin(this.time * 2.2 + (hashString(character.id) % 100)) * 0.7;
-    const lift = character.moving ? Math.sin(movingT * Math.PI) * TILE * 0.09 : idle * 0.3;
+    const cheerHop = isCompanion && character.cheerTimer > 0
+      ? Math.abs(Math.sin((1.4 - character.cheerTimer) * 14)) * TILE * 0.45
+      : 0;
+    const lift = character.moving
+      ? Math.sin(movingT * Math.PI) * TILE * 0.09
+      : (idle * 0.3 + cheerHop);
     const top = footY - height - lift;
 
     if (character === this.player || character === this.selected || character === this.hovered) {

@@ -68,6 +68,17 @@ export class DialogueManager {
     ]);
   }
 
+  openCustomBeat(npc, text, choices) {
+    if (!npc || !this.container) return;
+    this.dialogueNpc = npc;
+    document.body.classList.add('dialogue-open');
+    this.container.hidden = false;
+    this.avatar.src = avatarDataUrl(npc.recipe);
+    this.avatar.alt = `${npc.name}'s character`;
+    this.name.textContent = npc.name;
+    this.setBeat(text, choices);
+  }
+
   acceptFriendship() {
     if (!this.dialogueNpc) return;
     const npc = this.dialogueNpc;

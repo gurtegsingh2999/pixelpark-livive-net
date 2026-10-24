@@ -1,15 +1,21 @@
+import { findPath, isWalkable, typeAt } from '../world.js';
+import { recordGameResult } from '../storage.js';
+
 export class TicTacToeMiniGame {
-  constructor({ game, onToast } = {}) {
+  constructor({ game, onToast, onGameEnd } = {}) {
     this.game = game;
     this.onToast = onToast || (() => {});
+    this.onGameEnd = onGameEnd || (() => {});
     this.activeBoard = null;
     // activeBoard: {
-    //   originX, originY, // top-left tile (3x3 grid: x in [originX, originX+2], y in [originY, originY+2])
-    //   grid: Array(9).fill(null), // 'X' or 'O'
+    //   originX, originY,
+    //   grid: Array(9).fill(null),
     //   opponent: npc,
     //   turn: 'player' | 'opponent',
     //   winner: null,
-    //   status: 'playing' | 'ended'
+    //   status: 'playing' | 'ended',
+    //   thinkingTimer: 0,
+    //   steppingTo: null
     // }
   }
 
@@ -17,16 +23,17 @@ export class TicTacToeMiniGame {
     return Boolean(this.activeBoard);
   }
 
+  // Ensure board has at least 1 extra walkable tile to the left, right, top, and bottom
+  // i.e., bounds from originX - 1 to originX + 3, and originY - 1 to originY + 3
   canPlaceAt(originX, originY) {
     if (!this.game?.terrain) return false;
-    // Check if 3x3 tiles are all within bounds and walkable
-    for (let dy = 0; dy < 3; dy++) {
-      for (let dx = 0; dx < 3; dx++) {
+    for (let dy = -1; dy <= 3; dy++) {
+      for (let dx = -1; dx <= 3; dx++) {
         const tx = originX + dx;
         const ty = originY + dy;
         if (tx < 0 || tx >= 64 || ty < 0 || ty >= 64) return false;
         const tileType = this.game.terrain[ty]?.[tx];
-        if (tileType !== 'grass' && tileType !== 'dirt' && tileType !== 'field') {
+        if (!isWalkable(tileType)) {
           return false;
         }
       }
@@ -35,14 +42,16 @@ export class TicTacToeMiniGame {
   }
 
   findPlacementSpot(aroundX, aroundY) {
-    // Try offsets around character to find a valid 3x3 patch
+    // Try offsets around player to find a spot with required margins
     const offsets = [
-      { dx: 1, dy: -1 },
-      { dx: -3, dy: -1 },
-      { dx: -1, dy: 1 },
-      { dx: -1, dy: -3 },
-      { dx: 2, dy: 0 },
-      { dx: -4, dy: 0 }
+      { dx: 2, dy: -1 },
+      { dx: -4, dy: -1 },
+      { dx: -1, dy: 2 },
+      { dx: -1, dy: -4 },
+      { dx: 3, dy: 0 },
+      { dx: -5, dy: 0 },
+      { dx: 2, dy: 2 },
+      { dx: -4, dy: -4 }
     ];
 
     for (const offset of offsets) {
@@ -61,8 +70,42 @@ export class TicTacToeMiniGame {
     const spot = this.findPlacementSpot(player.x, player.y);
 
     if (!spot) {
-      this.onToast('Not enough open ground here to unfurl the giant Tic-Tac-Toe board.');
+      this.onToast('Need open ground with room to stand around to lay out Tic-Tac-Toe.');
       return false;
+    }
+
+    // Set up opponent and stage them
+    if (opponent) {
+      opponent.inMiniGame = true;
+      opponent.path = [];
+      opponent.moving = false;
+
+      // Position opponent on the right side of the board in the middle row:
+      // (originX + 3, originY + 1)
+      const sidelineX = spot.originX + 3;
+      const sidelineY = spot.originY + 1;
+      opponent.x = sidelineX;
+      opponent.y = sidelineY;
+      opponent.fromX = sidelineX;
+      opponent.fromY = sidelineY;
+      opponent.toX = sidelineX;
+      opponent.toY = sidelineY;
+      opponent.direction = 3; // Facing left toward the board
+
+      // Position opponent's companion beside them: (originX + 4, originY + 1)
+      const comp = this.game.getCompanionFor(opponent.id);
+      if (comp) {
+        const compX = spot.originX + 4;
+        const compY = spot.originY + 1;
+        comp.x = compX;
+        comp.y = compY;
+        comp.fromX = compX;
+        comp.fromY = compY;
+        comp.toX = compX;
+        comp.toY = compY;
+        comp.fetchTarget = null;
+        comp.direction = 3;
+      }
     }
 
     this.activeBoard = {
@@ -72,15 +115,42 @@ export class TicTacToeMiniGame {
       opponent,
       turn: 'player',
       winner: null,
-      status: 'playing'
+      status: 'playing',
+      thinkingTimer: 0,
+      steppingTo: null
     };
 
-    this.onToast('Unfurled Tic-Tac-Toe board! Walk onto a space and press Enter to mark X.');
+    this.onToast(`Unfurled Tic-Tac-Toe! ${opponent?.name || 'Opponent'} is ready on the sideline. Step on a square and press Enter to mark X.`);
     return true;
+  }
+
+  resetRound() {
+    if (!this.activeBoard) return;
+    this.activeBoard.grid = Array(9).fill(null);
+    this.activeBoard.turn = 'player';
+    this.activeBoard.winner = null;
+    this.activeBoard.status = 'playing';
+    this.activeBoard.thinkingTimer = 0;
+    this.activeBoard.steppingTo = null;
+
+    // Return opponent to sideline if needed
+    const opponent = this.activeBoard.opponent;
+    if (opponent) {
+      const sidelineX = this.activeBoard.originX + 3;
+      const sidelineY = this.activeBoard.originY + 1;
+      opponent.x = sidelineX;
+      opponent.y = sidelineY;
+      opponent.direction = 3;
+    }
+
+    this.onToast('New round! Step onto a square and press Enter to mark X.');
   }
 
   packUpBoard() {
     if (!this.activeBoard) return;
+    if (this.activeBoard.opponent) {
+      this.activeBoard.opponent.inMiniGame = false;
+    }
     this.activeBoard = null;
     this.onToast('Packed up the Tic-Tac-Toe board.');
   }
@@ -100,7 +170,7 @@ export class TicTacToeMiniGame {
     if (!this.activeBoard || this.activeBoard.status !== 'playing') return false;
     const isPlayer = character === this.game.player;
     if (isPlayer && this.activeBoard.turn !== 'player') {
-      this.onToast(`It's ${this.activeBoard.opponent?.name || 'opponent'}'s turn.`);
+      this.onToast(`It's ${this.activeBoard.opponent?.name || 'opponent'}'s turn to think.`);
       return false;
     }
 
@@ -120,23 +190,50 @@ export class TicTacToeMiniGame {
     const symbol = isPlayer ? 'X' : 'O';
     this.activeBoard.grid[cell.index] = symbol;
 
+    // Trigger cheer for the character's buddy
+    this.game.triggerCheer(character.id, 1.2);
+
     const winner = this.checkWinner();
     if (winner) {
       this.activeBoard.winner = winner;
       this.activeBoard.status = 'ended';
+
+      let resultOutcome = 'draw';
+      if (winner === 'X') resultOutcome = 'win';
+      else if (winner === 'O') resultOutcome = 'loss';
+
+      const opponent = this.activeBoard.opponent;
+      recordGameResult({
+        opponentId: opponent?.id,
+        opponentName: opponent?.name,
+        result: resultOutcome
+      });
+
       if (winner === 'draw') {
         this.onToast("Tic-Tac-Toe ended in a draw! Good match.");
+        this.game.triggerCheer(this.game.player?.id, 1.5);
+        if (opponent) this.game.triggerCheer(opponent.id, 1.5);
       } else {
-        const winnerName = winner === 'X' ? 'You' : (this.activeBoard.opponent?.name || 'Opponent');
+        const winnerName = winner === 'X' ? 'You' : (opponent?.name || 'Opponent');
+        const winnerId = winner === 'X' ? this.game.player?.id : opponent?.id;
         this.onToast(`${winnerName} won the Tic-Tac-Toe game!`);
+        this.game.triggerCheer(winnerId, 2.5);
       }
+
+      // Notify callback to trigger "Want to play again?" dialogue
+      setTimeout(() => {
+        if (this.activeBoard && this.activeBoard.status === 'ended') {
+          this.onGameEnd(winner, opponent);
+        }
+      }, 1000);
+
       return true;
     }
 
     // Switch turns
     if (isPlayer) {
       this.activeBoard.turn = 'opponent';
-      this.scheduleOpponentTurn();
+      this.activeBoard.thinkingTimer = 1.2; // Contemplate for 1.2s
     } else {
       this.activeBoard.turn = 'player';
       this.onToast("Your turn! Step onto a square and press Enter.");
@@ -145,42 +242,69 @@ export class TicTacToeMiniGame {
     return true;
   }
 
-  scheduleOpponentTurn() {
+  update(dt) {
     if (!this.activeBoard || this.activeBoard.status !== 'playing') return;
-    const opponent = this.activeBoard.opponent;
-    if (!opponent) {
-      this.activeBoard.turn = 'player';
-      return;
+
+    // Opponent thinking and walking flow
+    if (this.activeBoard.turn === 'opponent') {
+      const opponent = this.activeBoard.opponent;
+      if (!opponent) return;
+
+      if (this.activeBoard.thinkingTimer > 0) {
+        this.activeBoard.thinkingTimer -= dt;
+        if (this.activeBoard.thinkingTimer <= 0) {
+          // Finished contemplating: select tile and walk
+          this.executeOpponentMove();
+        }
+      }
     }
+  }
+
+  executeOpponentMove() {
+    const board = this.activeBoard;
+    if (!board || board.status !== 'playing') return;
+    const opponent = board.opponent;
+    if (!opponent) return;
 
     // Find available spots
     const available = [];
-    this.activeBoard.grid.forEach((val, idx) => {
+    board.grid.forEach((val, idx) => {
       if (val === null) available.push(idx);
     });
 
     if (!available.length) return;
 
-    // Pick a random available cell or center
-    const chosenIndex = available.includes(4) && Math.random() > 0.4
+    // AI logic: center first, or winning move, or random
+    const chosenIndex = available.includes(4) && Math.random() > 0.3
       ? 4
       : available[Math.floor(Math.random() * available.length)];
 
     const col = chosenIndex % 3;
     const row = Math.floor(chosenIndex / 3);
-    const targetX = this.activeBoard.originX + col;
-    const targetY = this.activeBoard.originY + row;
+    const targetX = board.originX + col;
+    const targetY = board.originY + row;
 
-    // Move opponent to cell
-    opponent.x = targetX;
-    opponent.y = targetY;
-
-    // Place O after a brief pause
-    setTimeout(() => {
-      if (this.activeBoard && this.activeBoard.turn === 'opponent') {
-        this.handleAction(opponent);
-      }
-    }, 600);
+    // Pathfind opponent to the target cell
+    const path = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: targetX, y: targetY });
+    if (path.length) {
+      opponent.path = path;
+      // When opponent arrives, handleAction
+      const checkArrival = setInterval(() => {
+        if (!this.activeBoard || this.activeBoard.turn !== 'opponent') {
+          clearInterval(checkArrival);
+          return;
+        }
+        if (opponent.x === targetX && opponent.y === targetY && !opponent.moving) {
+          clearInterval(checkArrival);
+          this.handleAction(opponent);
+        }
+      }, 100);
+    } else {
+      // Direct step fallback
+      opponent.x = targetX;
+      opponent.y = targetY;
+      this.handleAction(opponent);
+    }
   }
 
   checkWinner() {
@@ -214,7 +338,7 @@ export class TicTacToeMiniGame {
 
     ctx.save();
     // Canvas mat / ground blanket
-    ctx.fillStyle = 'rgba(245, 238, 220, 0.92)';
+    ctx.fillStyle = 'rgba(245, 238, 220, 0.94)';
     ctx.fillRect(screenX - 4, screenY - 4, boardSize + 8, boardSize + 8);
 
     ctx.strokeStyle = 'rgba(120, 80, 50, 0.45)';
@@ -267,6 +391,20 @@ export class TicTacToeMiniGame {
           ctx.stroke();
         }
       }
+    }
+
+    // Status indicator banner on board if ended
+    if (this.activeBoard.status === 'ended') {
+      ctx.fillStyle = 'rgba(20, 30, 22, 0.85)';
+      ctx.fillRect(screenX, screenY + boardSize / 2 - 20, boardSize, 40);
+      ctx.fillStyle = '#edf4e9';
+      ctx.font = '700 14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = this.activeBoard.winner === 'draw'
+        ? 'Draw Game!'
+        : `${this.activeBoard.winner === 'X' ? 'You' : (this.activeBoard.opponent?.name || 'Opponent')} Won!`;
+      ctx.fillText(label, screenX + boardSize / 2, screenY + boardSize / 2);
     }
 
     ctx.restore();

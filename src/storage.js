@@ -1,6 +1,7 @@
 import { decodeTerrain, encodeTerrain } from './world.js';
 
 export const STORAGE_KEY = 'playpark.save.v1';
+export const STATS_KEY = 'playpark.stats.v1';
 
 export function serializeSave(game, draft, friends) {
   if (!game?.terrain || !game.player || !draft) return null;
@@ -71,4 +72,56 @@ export function clearSave() {
   } catch {
     return false;
   }
+}
+
+export function loadStats() {
+  try {
+    const raw = localStorage.getItem(STATS_KEY);
+    if (!raw) {
+      return {
+        totalWins: 0,
+        totalLosses: 0,
+        totalDraws: 0,
+        friends: {}
+      };
+    }
+    const data = JSON.parse(raw);
+    return {
+      totalWins: Number(data.totalWins) || 0,
+      totalLosses: Number(data.totalLosses) || 0,
+      totalDraws: Number(data.totalDraws) || 0,
+      friends: data.friends && typeof data.friends === 'object' ? data.friends : {}
+    };
+  } catch {
+    return { totalWins: 0, totalLosses: 0, totalDraws: 0, friends: {} };
+  }
+}
+
+export function recordGameResult({ opponentId, opponentName, result }) {
+  const stats = loadStats();
+  if (result === 'win') stats.totalWins++;
+  else if (result === 'loss') stats.totalLosses++;
+  else if (result === 'draw') stats.totalDraws++;
+
+  if (opponentId) {
+    if (!stats.friends[opponentId]) {
+      stats.friends[opponentId] = {
+        name: opponentName || 'Neighbour',
+        wins: 0,
+        losses: 0,
+        draws: 0
+      };
+    }
+    if (opponentName) stats.friends[opponentId].name = opponentName;
+    if (result === 'win') stats.friends[opponentId].wins++;
+    else if (result === 'loss') stats.friends[opponentId].losses++;
+    else if (result === 'draw') stats.friends[opponentId].draws++;
+  }
+
+  try {
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  } catch {
+    // Ignore storage errors
+  }
+  return stats;
 }
