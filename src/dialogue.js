@@ -154,26 +154,54 @@ export class DialogueManager {
     if (!game) return;
 
     const npc = this.dialogueNpc;
-    const pos = game.interpolated ? game.interpolated(npc) : { x: npc.x, y: npc.y };
-    const screenX = (pos.x + 0.5) * 48 - game.camera.x;
-    const screenY = pos.y * 48 - game.camera.y;
+    const player = game.player;
+    const npcPos = game.interpolated ? game.interpolated(npc) : { x: npc.x, y: npc.y };
+    const playerPos = player && game.interpolated ? game.interpolated(player) : (player ? { x: player.x, y: player.y } : null);
 
-    // Anchor bubble near the speaking NPC (slightly above / next to them)
+    const npcScreenX = (npcPos.x + 0.5) * 48 - game.camera.x;
+    const npcScreenY = npcPos.y * 48 - game.camera.y;
+
+    const playerScreenX = playerPos ? (playerPos.x + 0.5) * 48 - game.camera.x : npcScreenX;
+
     const bubbleW = this.container.offsetWidth || 280;
-    const bubbleH = this.container.offsetHeight || 120;
+    const bubbleH = this.container.offsetHeight || 100;
     const pad = 12;
 
-    let left = screenX + 24; // to the right of NPC
-    // If overflowing right viewport edge, flip to left of NPC
-    if (left + bubbleW > window.innerWidth - pad) {
-      left = screenX - bubbleW - 24;
-    }
-    // Clamp to viewport
-    left = Math.max(pad, Math.min(window.innerWidth - bubbleW - pad, left));
+    // Primary goal: Do not cover the NPC or the Player.
+    // Placement strategy:
+    // 1. Try placing ABOVE the NPC and player
+    let top = npcScreenY - bubbleH - 20;
+    let left = npcScreenX - bubbleW / 2;
 
-    let top = screenY - bubbleH / 2;
-    // Keep away from top bar and bottom touch controls
-    top = Math.max(70, Math.min(window.innerHeight - bubbleH - 140, top));
+    // If top is clipped by HUD topbar (or off screen), place to the side opposite the player
+    if (top < 65) {
+      if (playerScreenX >= npcScreenX) {
+        // Player is to the right of NPC: place bubble to the LEFT of NPC
+        left = npcScreenX - bubbleW - 36;
+      } else {
+        // Player is to the left of NPC: place bubble to the RIGHT of NPC
+        left = npcScreenX + 36;
+      }
+      top = npcScreenY - bubbleH / 2;
+    }
+
+    // Viewport containment:
+    // If left overflows viewport, adjust
+    if (left + bubbleW > window.innerWidth - pad) {
+      left = window.innerWidth - bubbleW - pad;
+    }
+    if (left < pad) {
+      left = pad;
+    }
+
+    // Keep clear of bottom controls (virtual d-pad / action buttons on mobile)
+    const maxBottom = window.innerHeight - 170;
+    if (top + bubbleH > maxBottom) {
+      top = Math.max(65, maxBottom - bubbleH);
+    }
+    if (top < 65) {
+      top = 65;
+    }
 
     this.container.style.left = `${Math.round(left)}px`;
     this.container.style.top = `${Math.round(top)}px`;
@@ -207,6 +235,7 @@ export class DialogueManager {
     document.body.classList.remove('dialogue-open');
     const npc = this.dialogueNpc;
     this.dialogueNpc = null;
+    this.justClosedAt = Date.now();
     this.onDialogueEnd?.(npc);
   }
 }

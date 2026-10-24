@@ -226,7 +226,7 @@ function handleActionKey(character) {
     tttGame.handleAction(character);
     return;
   }
-  if (dialogue?.isOpen()) {
+  if (dialogue?.isOpen() || (Date.now() - (dialogue?.justClosedAt || 0) < 300)) {
     return;
   }
   if (panels?.isMenuOpen?.()) {
