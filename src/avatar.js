@@ -1,5 +1,6 @@
 import { createVoxelAvatar, createCompanionAvatar } from '../vendor/dicebear-voxel.js';
 import { makeSeed } from './world.js';
+import { getAnimationProfile } from './animation.js';
 
 export const COMPANION_STYLES = ['clay', 'critters', 'gaze', 'sprouts', 'voxel-bot'];
 
@@ -127,34 +128,45 @@ function recipeOptions(recipe) {
 const svgCache = new Map();
 const imageCache = new Map();
 
-export function avatarSvg(recipe) {
-  const key = canonicalRecipe(recipe);
+export function avatarSvg(recipe, { frame = 'default' } = {}) {
+  const baseKey = canonicalRecipe(recipe);
+  const key = `${baseKey}:${frame}`;
   if (!svgCache.has(key)) {
+    let rawSvg;
     if (recipe.isCompanion) {
-      svgCache.set(key, createCompanionAvatar(recipe.style, recipeOptions(recipe)));
+      rawSvg = createCompanionAvatar(recipe.style, recipeOptions(recipe));
     } else {
-      svgCache.set(key, createVoxelAvatar(recipeOptions(recipe)));
+      rawSvg = createVoxelAvatar(recipeOptions(recipe));
+    }
+
+    if (frame === 'blink') {
+      const profile = getAnimationProfile(recipe);
+      svgCache.set(key, profile.makeBlinkSvg ? profile.makeBlinkSvg(rawSvg) : rawSvg);
+    } else {
+      svgCache.set(key, rawSvg);
     }
   }
   return svgCache.get(key);
 }
 
-export function avatarDataUrl(recipe) {
-  const key = canonicalRecipe(recipe);
+export function avatarDataUrl(recipe, { frame = 'default' } = {}) {
+  const baseKey = canonicalRecipe(recipe);
+  const key = `${baseKey}:${frame}`;
   if (!imageCache.has(key)) imageCache.set(key, {});
   const entry = imageCache.get(key);
   if (!entry.url) {
-    entry.url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(avatarSvg(recipe))}`;
+    entry.url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(avatarSvg(recipe, { frame }))}`;
   }
   return entry.url;
 }
 
-export function getAvatarImage(recipe) {
-  return imageCache.get(canonicalRecipe(recipe))?.image || null;
+export function getAvatarImage(recipe, { frame = 'default' } = {}) {
+  const key = `${canonicalRecipe(recipe)}:${frame}`;
+  return imageCache.get(key)?.image || null;
 }
 
-export function loadAvatarImage(recipe) {
-  const key = canonicalRecipe(recipe);
+export function loadAvatarImage(recipe, { frame = 'default' } = {}) {
+  const key = `${canonicalRecipe(recipe)}:${frame}`;
   if (!imageCache.has(key)) imageCache.set(key, {});
   const entry = imageCache.get(key);
   if (entry.promise) return entry.promise;
@@ -167,7 +179,7 @@ export function loadAvatarImage(recipe) {
       resolve(image);
     };
     image.onerror = () => reject(new Error('Could not render avatar'));
-    image.src = avatarDataUrl(recipe);
+    image.src = avatarDataUrl(recipe, { frame });
   });
 
   return entry.promise;
@@ -178,7 +190,12 @@ export async function preloadAvatars(recipes) {
   for (const recipe of recipes) {
     if (recipe) unique.set(canonicalRecipe(recipe), recipe);
   }
-  const results = await Promise.allSettled([...unique.values()].map(loadAvatarImage));
+  const promises = [];
+  for (const recipe of unique.values()) {
+    promises.push(loadAvatarImage(recipe, { frame: 'default' }));
+    promises.push(loadAvatarImage(recipe, { frame: 'blink' }));
+  }
+  const results = await Promise.allSettled(promises);
   return results.filter(result => result.status === 'fulfilled').length;
 }
 

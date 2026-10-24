@@ -7,6 +7,7 @@ import {
 } from './world.js';
 import { drawAvatar, getAvatarImage, loadAvatarImage } from './avatar.js';
 import { shouldMirror } from './facing.js';
+import { getAnimationProfile } from './animation.js';
 
 export const TILE = 48;
 export const CHARACTER_HEIGHT = TILE * 1.72;
@@ -210,7 +211,21 @@ export class WorldRenderer {
     const lift = character.moving
       ? Math.sin(movingT * Math.PI) * TILE * 0.09
       : (idle * 0.3 + cheerHop);
-    const top = footY - height - lift;
+    const profile = getAnimationProfile(character.recipe);
+    // Hash character id to de-synchronize blinks and idle cycles so neighbours don't blink in unison
+    const charTimeOffset = (hashString(character.id || 'char') % 1000) * 0.01;
+    const animTime = (game.time || 0) + charTimeOffset;
+
+    // Determine family-specific procedural transform (stretch, hop, bob, jiggle, sway)
+    const animTransform = profile.getTransform ? profile.getTransform(animTime, height) : { translateY: 0, rotate: 0, scaleX: 1, scaleY: 1 };
+
+    // Apply family-specific transform only when idle or spectator
+    const idleTranslateY = character.moving ? 0 : (animTransform.translateY || 0);
+    const idleScaleX = character.moving ? 1 : (animTransform.scaleX ?? 1);
+    const idleScaleY = character.moving ? 1 : (animTransform.scaleY ?? 1);
+    const idleRotate = character.moving ? 0 : (animTransform.rotate || 0);
+
+    const top = footY - height - lift + idleTranslateY;
 
     if (character === game.player || character === game.selected || character === game.hovered) {
       ctx.beginPath();
@@ -222,11 +237,29 @@ export class WorldRenderer {
       ctx.stroke();
     }
 
-    const image = getAvatarImage(character.recipe);
+    // Determine blink frame: alternate to closed-eye frame during family's blink window
+    const isBlink = profile.isBlinking ? profile.isBlinking(animTime) : false;
+    let image = isBlink ? getAvatarImage(character.recipe, { frame: 'blink' }) : getAvatarImage(character.recipe, { frame: 'default' });
+    if (!image) {
+      // Fallback to default frame if blink image hasn't loaded yet
+      image = getAvatarImage(character.recipe, { frame: 'default' });
+    }
+
     if (image) {
-      drawAvatar(ctx, image, footX - width / 2, top, width, height, shouldMirror(character.direction));
+      const flip = shouldMirror(character.direction);
+      ctx.save();
+      if (idleRotate !== 0 || idleScaleX !== 1 || idleScaleY !== 1) {
+        // Transform around base / feet
+        ctx.translate(footX, footY);
+        if (idleRotate !== 0) ctx.rotate(idleRotate);
+        if (idleScaleX !== 1 || idleScaleY !== 1) ctx.scale(idleScaleX, idleScaleY);
+        ctx.translate(-footX, -footY);
+      }
+      drawAvatar(ctx, image, footX - width / 2, top, width, height, flip);
+      ctx.restore();
     } else {
-      loadAvatarImage(character.recipe).catch(() => {});
+      loadAvatarImage(character.recipe, { frame: 'default' }).catch(() => {});
+      loadAvatarImage(character.recipe, { frame: 'blink' }).catch(() => {});
       ctx.fillStyle = 'rgba(20, 30, 22, 0.8)';
       ctx.beginPath();
       ctx.arc(footX, footY - height * 0.45, height * 0.3, 0, Math.PI * 2);
