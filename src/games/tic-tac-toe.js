@@ -233,7 +233,8 @@ export class TicTacToeMiniGame {
     // Switch turns
     if (isPlayer) {
       this.activeBoard.turn = 'opponent';
-      this.activeBoard.thinkingTimer = 1.2; // Contemplate for 1.2s
+      // Thinking delay between 0.2 and 0.8 seconds
+      this.activeBoard.thinkingTimer = 0.2 + Math.random() * 0.6;
     } else {
       this.activeBoard.turn = 'player';
       this.onToast("Your turn! Step onto a square and press Enter.");
@@ -288,7 +289,7 @@ export class TicTacToeMiniGame {
     const path = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: targetX, y: targetY });
     if (path.length) {
       opponent.path = path;
-      // When opponent arrives, handleAction
+      // Monitor arrival via polling interval
       const checkArrival = setInterval(() => {
         if (!this.activeBoard || this.activeBoard.turn !== 'opponent') {
           clearInterval(checkArrival);
@@ -298,7 +299,7 @@ export class TicTacToeMiniGame {
           clearInterval(checkArrival);
           this.handleAction(opponent);
         }
-      }, 100);
+      }, 50);
     } else {
       // Direct step fallback
       opponent.x = targetX;

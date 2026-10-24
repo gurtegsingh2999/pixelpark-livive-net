@@ -498,8 +498,6 @@ export class Game {
   }
 
   updateNpc(npc, dt) {
-    if (npc.inMiniGame) return;
-
     if (npc.moving) {
       npc.elapsed += dt;
       if (npc.elapsed >= npc.duration) {
@@ -508,6 +506,20 @@ export class Game {
         npc.moving = false;
         npc.elapsed = 0;
         npc.wait = 0.5 + Math.random() * 1.6;
+      }
+      return;
+    }
+
+    if (npc.inMiniGame) {
+      if (npc.path && npc.path.length) {
+        const next = npc.path.shift();
+        const dx = next.x - npc.x;
+        const dy = next.y - npc.y;
+        if (Math.abs(dx) + Math.abs(dy) === 1) {
+          this.tryStep(npc, dx, dy, NPC_STEP);
+        } else {
+          npc.path = [];
+        }
       }
       return;
     }
