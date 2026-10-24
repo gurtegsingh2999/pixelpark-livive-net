@@ -1,70 +1,66 @@
 /**
  * Avatar Animation Profiles
  * Isolates the exact animation timelines, multi-frame SVG generation, and procedural
- * transforms for each DiceBear style family so they run accurately on HTML5 Canvas.
+ * transforms (both idle and movement locomotion) for each DiceBear style family.
  *
- * Why multi-frame SVG generation is needed:
- * HTML5 Canvas `ctx.drawImage(img)` freezes embedded SVG `@keyframes` at t=0.
- * Furthermore, `<use href="#id" transform="...">` inside an `<img src="data:image/svg+xml">`
- * does not move internal `<g id="id">` coordinates reliably across browsers.
- * By generating distinct SVG frames using DiceBear's native component variants and
- * internal group transforms (e.g. `.va-upper`, `.vb-upper`, `.vb-head`, `eyesVariant`,
- * `mouthVariant`, and eyelid layers), every character visibly animates on Canvas and in UI previews.
+ * Each family defines:
+ * - `getFrame(t)`: returns the active SVG frame ('default', 'blink', 'stretch', 'look-left', 'look-right', 'talk')
+ * - `getTransform(t, characterHeight, { moving, movingT, direction })`: returns procedural
+ *   { translateY, translateX, rotate, scaleX, scaleY, alpha, shadowScale, hologramGlow }
+ *   tailored to how that specific creature/character moves and idles!
  */
 
 export const ANIMATION_PROFILES = {
   // --- Voxel Art (Player & NPCs) ---
-  // Native DiceBear animations & expression shifts:
-  // 1. Upper-body stretch (`va-upper` shifts up while feet/legs remain planted on the ground)
-  // 2. Eyelid blink (`va-blink-*` opacity 1 + closed eyes)
-  // 3. Eye gaze (`side` eyes looking left/right vs forward)
-  // 4. Mouth expression shift (periodic talk / smile / ooh variation)
+  // Bipedal humanoid:
+  // - Idle: periodic upper-body stretch (.va-upper), eye glances left/right, blinking, talking
+  // - Walking: crisp step hop arc
   'voxel-art': {
     family: 'voxel-art',
     frames: ['default', 'blink', 'stretch', 'look-left', 'look-right', 'talk'],
 
     getFrame(t) {
-      // 1. Blink window (every 3.2s for 0.25s)
       const blinkCycle = (t % 3.2) / 3.2;
-      if (blinkCycle >= 0.88 && blinkCycle <= 0.96) {
-        return 'blink';
-      }
+      if (blinkCycle >= 0.88 && blinkCycle <= 0.96) return 'blink';
 
-      // 2. Upper-body stretch window (every 4.5s for 0.65s)
       const stretchCycle = (t % 4.5) / 4.5;
-      if (stretchCycle >= 0.72 && stretchCycle <= 0.86) {
-        return 'stretch';
-      }
+      if (stretchCycle >= 0.72 && stretchCycle <= 0.86) return 'stretch';
 
-      // 3. Eye gaze & mouth cycle (6.0s loop)
       const actionCycle = (t % 6.0) / 6.0;
-      if (actionCycle >= 0.15 && actionCycle < 0.30) {
-        return 'look-right';
-      }
-      if (actionCycle >= 0.45 && actionCycle < 0.58) {
-        return 'talk';
-      }
-      if (actionCycle >= 0.70 && actionCycle < 0.85) {
-        return 'look-left';
-      }
+      if (actionCycle >= 0.15 && actionCycle < 0.30) return 'look-right';
+      if (actionCycle >= 0.45 && actionCycle < 0.58) return 'talk';
+      if (actionCycle >= 0.70 && actionCycle < 0.85) return 'look-left';
 
       return 'default';
     },
 
-    getTransform(t, characterHeight) {
-      // Subtle continuous breathing + upper stretch reinforcement
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      if (moving) {
+        // Bipedal step hop
+        const hop = Math.sin(movingT * Math.PI);
+        return {
+          translateY: -characterHeight * 0.06 * hop,
+          translateX: 0,
+          rotate: 0,
+          scaleX: 1,
+          scaleY: 1,
+          alpha: 1,
+          shadowScale: 1 - 0.1 * hop
+        };
+      }
+
       const stretchCycle = (t % 4.5) / 4.5;
-      let translateY = 0;
+      let translateY = -Math.sin(t * 2.2) * 0.4;
       let scaleY = 1;
       let scaleX = 1;
 
       if (stretchCycle >= 0.70 && stretchCycle <= 0.88) {
         const p = Math.sin(((stretchCycle - 0.70) / 0.18) * Math.PI);
-        translateY = -0.02 * characterHeight * p;
+        translateY -= 0.02 * characterHeight * p;
         scaleY = 1 + 0.03 * p;
         scaleX = 1 - 0.015 * p;
       }
-      return { translateY, translateX: 0, rotate: 0, scaleX, scaleY };
+      return { translateY, translateX: 0, rotate: 0, scaleX, scaleY, alpha: 1, shadowScale: 1 };
     },
 
     isBlinking(t) {
@@ -95,27 +91,23 @@ export const ANIMATION_PROFILES = {
 
     makeFrameSvg(svg, frame) {
       if (frame === 'blink') {
-        // Activate DiceBear's built-in eyelid overlay AND closed eyes
         return svg.replace(/class="va-blink-[^"]+"\s+opacity="0"/g, match =>
           match.replace('opacity="0"', 'opacity="1"')
         );
       }
       if (frame === 'stretch') {
-        // Move `.va-upper` (torso, arms, head) up by -3.5 units while legs & shoes stay planted!
         return svg.replace(
           /<g class="va-upper">/g,
           '<g class="va-upper" transform="translate(0 -3.5)">'
         );
       }
       if (frame === 'look-left') {
-        // Shift the internal eyes definition paths left by 2.5 units inside <g id="eyes-...">
         return svg.replace(
           /(<g id="eyes-[^"]+">)([\s\S]*?)(<\/g>)/,
           '$1<g transform="translate(-2.5 0)">$2</g>$3'
         );
       }
       if (frame === 'look-right') {
-        // Ensure eyes shift right even if variant was already side
         return svg.replace(
           /(<g id="eyes-[^"]+">)([\s\S]*?)(<\/g>)/,
           '$1<g transform="translate(2.5 0)">$2</g>$3'
@@ -126,40 +118,51 @@ export const ANIMATION_PROFILES = {
   },
 
   // --- Voxel Bot (Companion) ---
-  // Native DiceBear animations:
-  // 1. `.vb-upper` torso stretch (-2.5px) + `.vb-head` head lift (-2.5px)
-  // 2. `.vb-blink-*` visor/screen blink
-  // 3. Eye & mouth screen state changes (`happy` / `speaker`)
+  // Wheeled / Roller Robot:
+  // - Has wheels/rollers for feet: NEVER hops when moving!
+  // - Fluid rolling locomotion: stays planted at ground level (translateY: 0), tilts smoothly
+  //   forward into its roll with a slight motor hum vibration.
+  // - Idle: `.vb-upper` torso stretch + `.vb-head` lift, visor blink, screen expressions.
   'voxel-bot': {
     family: 'voxel-bot',
     frames: ['default', 'blink', 'stretch', 'look-left', 'look-right', 'talk'],
 
     getFrame(t) {
       const blinkCycle = (t % 3.4) / 3.4;
-      if (blinkCycle >= 0.88 && blinkCycle <= 0.96) {
-        return 'blink';
-      }
+      if (blinkCycle >= 0.88 && blinkCycle <= 0.96) return 'blink';
 
       const stretchCycle = (t % 4.5) / 4.5;
-      if (stretchCycle >= 0.70 && stretchCycle <= 0.86) {
-        return 'stretch';
-      }
+      if (stretchCycle >= 0.70 && stretchCycle <= 0.86) return 'stretch';
 
       const actionCycle = (t % 5.8) / 5.8;
-      if (actionCycle >= 0.18 && actionCycle < 0.34) {
-        return 'look-right';
-      }
-      if (actionCycle >= 0.48 && actionCycle < 0.62) {
-        return 'talk';
-      }
-      if (actionCycle >= 0.72 && actionCycle < 0.86) {
-        return 'look-left';
-      }
+      if (actionCycle >= 0.18 && actionCycle < 0.34) return 'look-right';
+      if (actionCycle >= 0.48 && actionCycle < 0.62) return 'talk';
+      if (actionCycle >= 0.72 && actionCycle < 0.86) return 'look-left';
 
       return 'default';
     },
 
-    getTransform(t, characterHeight) {
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      if (moving) {
+        // Fluid wheeled rolling effect:
+        // Zero vertical hop (wheels stay firmly on the ground), smooth forward pitch tilt
+        // as it accelerates and decelerates across the tile, plus subtle high-frequency roller hum.
+        const rollCurve = Math.sin(movingT * Math.PI);
+        const motorHum = Math.sin(t * 45) * 0.008;
+        // Negative angle leans left (the sprite's forward direction; drawAvatar mirrors when facing right)
+        const forwardLean = -(4.8 * Math.PI / 180) * rollCurve;
+
+        return {
+          translateY: 0,
+          translateX: 0,
+          rotate: forwardLean,
+          scaleX: 1 + 0.025 * rollCurve,
+          scaleY: 1 - 0.02 * rollCurve + motorHum,
+          alpha: 1,
+          shadowScale: 1.05
+        };
+      }
+
       const stretchCycle = (t % 4.5) / 4.5;
       let translateY = 0;
       let scaleY = 1;
@@ -171,7 +174,7 @@ export const ANIMATION_PROFILES = {
         scaleY = 1 + 0.03 * p;
         scaleX = 1 - 0.015 * p;
       }
-      return { translateY, translateX: 0, rotate: 0, scaleX, scaleY };
+      return { translateY, translateX: 0, rotate: 0, scaleX, scaleY, alpha: 1, shadowScale: 1 };
     },
 
     isBlinking(t) {
@@ -201,7 +204,6 @@ export const ANIMATION_PROFILES = {
         );
       }
       if (frame === 'stretch') {
-        // Exact DiceBear voxel-bot animation: vb-upper lifts -2.5 AND vb-head lifts another -2.5!
         return svg
           .replace(/<g class="vb-upper">/g, '<g class="vb-upper" transform="translate(0 -2.5)">')
           .replace(/<g class="vb-head">/g, '<g class="vb-head" transform="translate(0 -2.5)">');
@@ -222,32 +224,58 @@ export const ANIMATION_PROFILES = {
     }
   },
 
-  // --- Clay (Companion) ---
-  // Native DiceBear animations: dbclSquash (3.8s), dbclPeek (4.6s), dbclJiggle (5.2s)
-  'clay': {
-    family: 'clay',
+  // --- Gaze (Companion) ---
+  // Floating Hologram / "Digi-Buddy":
+  // - Never touches the ground or hops: levitates continuously in mid-air!
+  // - Smooth sinusoidal vertical hover + gentle figure-8 lateral drift + holographic shimmer/glow.
+  // - When moving across tiles, glides weightlessly through the air without footsteps.
+  'gaze': {
+    family: 'gaze',
     frames: ['default', 'blink', 'look-left', 'look-right'],
 
     getFrame(t) {
-      const blinkCycle = (t % 4.2) / 4.2;
-      if (blinkCycle >= 0.90 && blinkCycle <= 0.97) return 'blink';
+      const blinkCycle = (t % 4.0) / 4.0;
+      if (blinkCycle >= 0.91 && blinkCycle <= 0.97) return 'blink';
 
-      const peekCycle = (t % 4.6) / 4.6;
-      if (peekCycle >= 0.20 && peekCycle < 0.42) return 'look-right';
-      if (peekCycle >= 0.55 && peekCycle < 0.78) return 'look-left';
+      const lookCycle = (t % 6.4) / 6.4;
+      if (lookCycle >= 0.22 && lookCycle < 0.42) return 'look-left';
+      if (lookCycle >= 0.46 && lookCycle < 0.66) return 'look-right';
       return 'default';
     },
 
-    getTransform(t, characterHeight) {
-      const squashPhase = (t % 3.8) / 3.8;
-      const squashSin = Math.sin(squashPhase * Math.PI * 2);
-      const scaleX = 1 + 0.035 * squashSin;
-      const scaleY = 1 - 0.045 * squashSin;
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      // Continuous mid-air levitation: always hovers ~18% of height above the ground
+      // with a smooth, weightless sine-wave float and gentle figure-8 drift.
+      const hoverWave = Math.sin(t * 2.6);
+      const secondaryWave = Math.cos(t * 1.3);
+      const baseHover = -0.18 * characterHeight;
+      const floatOffset = -0.055 * characterHeight * hoverWave;
+      const translateY = baseHover + floatOffset;
+      const translateX = characterHeight * 0.03 * secondaryWave;
 
-      const jigglePhase = (t % 5.2) / 5.2;
-      const rotate = Math.sin(jigglePhase * Math.PI * 2) * (3.5 * Math.PI / 180);
+      // Subtle holographic tilt & breathing pulse; banks smoothly while gliding
+      const glideBank = moving ? -(5.0 * Math.PI / 180) * Math.sin(movingT * Math.PI) : 0;
+      const idleTilt = (2.2 * Math.PI / 180) * secondaryWave;
+      const rotate = glideBank + idleTilt;
 
-      return { translateY: 0, translateX: 0, rotate, scaleX, scaleY };
+      const scaleX = 1 + 0.025 * hoverWave;
+      const scaleY = 1 - 0.025 * hoverWave;
+
+      // Digi-buddy holographic opacity shimmer (0.84 - 0.96)
+      const alpha = 0.90 + 0.06 * Math.sin(t * 6.5);
+      // Ground projection ring shrinks as the hologram floats higher
+      const shadowScale = 0.68 - 0.14 * hoverWave;
+
+      return {
+        translateY,
+        translateX,
+        rotate,
+        scaleX,
+        scaleY,
+        alpha,
+        shadowScale,
+        hologramGlow: true
+      };
     },
 
     isBlinking(t) {
@@ -262,7 +290,7 @@ export const ANIMATION_PROFILES = {
     getRecipeFrameOptions(baseOptions, frame) {
       const opts = { ...baseOptions };
       if (frame === 'blink') {
-        opts.eyesVariant = ['happy'];
+        opts.eyesVariant = ['squint'];
         opts.eyesProbability = 100;
       }
       return opts;
@@ -270,20 +298,23 @@ export const ANIMATION_PROFILES = {
 
     makeFrameSvg(svg, frame) {
       if (frame === 'blink') {
-        return svg.replace(/class="dbcl-ep"/g, 'class="dbcl-ep" opacity="0.15"');
+        return svg.replace(/class="dbga-eye"/g, 'class="dbga-eye" opacity="0.1"');
       }
       if (frame === 'look-left') {
-        return svg.replace(/class="dbcl-ep"/g, 'class="dbcl-ep" transform="translate(-1.8, -0.8)"');
+        return svg.replace(/class="dbga-look"/g, 'class="dbga-look" transform="translate(-3.6, 0.9)"');
       }
       if (frame === 'look-right') {
-        return svg.replace(/class="dbcl-ep"/g, 'class="dbcl-ep" transform="translate(1.8, -0.8)"');
+        return svg.replace(/class="dbga-look"/g, 'class="dbga-look" transform="translate(3.4, -0.7)"');
       }
       return svg;
     }
   },
 
   // --- Critters (Companion) ---
-  // Native DiceBear animations: dbcrBob (3.4s), dbcrBlink (4.6s), dbcrSway (5.2s)
+  // Blob-ish Creature:
+  // - Instead of hopping into the air, compresses down toward the ground (squishing vertically
+  //   and spreading horizontally at the base) like slinking/scooting.
+  // - Wobbles side-to-side as it walks, as if pushing one blob-foot in front of the other.
   'critters': {
     family: 'critters',
     frames: ['default', 'blink', 'look-left', 'look-right'],
@@ -298,15 +329,50 @@ export const ANIMATION_PROFILES = {
       return 'default';
     },
 
-    getTransform(t, characterHeight) {
-      const bobPhase = (t % 3.4) / 3.4;
-      const bobSin = Math.sin(bobPhase * Math.PI * 2);
-      const translateY = -0.045 * characterHeight * Math.max(0, bobSin);
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      if (moving) {
+        // Slinking / blob-waddle locomotion:
+        // 1. Compresses down toward the ground twice per tile step (two "foot" pushes per step)
+        const slinkPush = Math.sin(movingT * Math.PI * 2);
+        const compression = Math.abs(slinkPush); // 0 -> 1 -> 0 -> 1 -> 0
+        // Squash down (scaleY < 1) and spread out wide (scaleX > 1) anchored at footY
+        const scaleY = 1 - 0.18 * compression;
+        const scaleX = 1 + 0.16 * compression;
 
-      const swayPhase = (t % 5.2) / 5.2;
-      const rotate = Math.sin(swayPhase * Math.PI * 2) * (3.2 * Math.PI / 180);
+        // 2. Side-to-side waddle wobble as it alternates pushing left/right "blob feet" forward
+        const wobbleAngle = (7.5 * Math.PI / 180) * slinkPush;
+        const translateX = characterHeight * 0.04 * slinkPush;
 
-      return { translateY, translateX: 0, rotate, scaleX: 1, scaleY: 1 };
+        return {
+          translateY: 0, // Never leaves the ground! Compresses downward via scaleY around footY
+          translateX,
+          rotate: wobbleAngle,
+          scaleX,
+          scaleY,
+          alpha: 1,
+          shadowScale: 1 + 0.15 * compression
+        };
+      }
+
+      // Idle: soft slinking compression towards the ground + gentle side-to-side blob wobble
+      const slinkPhase = (t % 3.2) / 3.2;
+      // Smooth compression pulse toward the ground (never lifts above 0)
+      const compressPulse = Math.max(0, Math.sin(slinkPhase * Math.PI * 2));
+      const scaleY = 1 - 0.08 * compressPulse;
+      const scaleX = 1 + 0.07 * compressPulse;
+
+      const swayPhase = (t % 4.4) / 4.4;
+      const rotate = Math.sin(swayPhase * Math.PI * 2) * (3.5 * Math.PI / 180);
+
+      return {
+        translateY: 0,
+        translateX: 0,
+        rotate,
+        scaleX,
+        scaleY,
+        alpha: 1,
+        shadowScale: 1 + 0.07 * compressPulse
+      };
     },
 
     isBlinking(t) {
@@ -350,46 +416,45 @@ export const ANIMATION_PROFILES = {
     }
   },
 
-  // --- Gaze (Companion) ---
-  // Native DiceBear animations: dbgaLook (6.4s), dbgaBlink (4.4s), dbgaHop (5.2s)
-  'gaze': {
-    family: 'gaze',
+  // --- Clay (Companion) ---
+  // Native DiceBear animations: dbclSquash (3.8s), dbclPeek (4.6s), dbclJiggle (5.2s)
+  'clay': {
+    family: 'clay',
     frames: ['default', 'blink', 'look-left', 'look-right'],
 
     getFrame(t) {
-      const blinkCycle = (t % 4.0) / 4.0;
-      if (blinkCycle >= 0.91 && blinkCycle <= 0.97) return 'blink';
+      const blinkCycle = (t % 4.2) / 4.2;
+      if (blinkCycle >= 0.90 && blinkCycle <= 0.97) return 'blink';
 
-      // Matches dbgaLook: 24-38% left, 46-60% right
-      const lookCycle = (t % 6.4) / 6.4;
-      if (lookCycle >= 0.22 && lookCycle < 0.42) return 'look-left';
-      if (lookCycle >= 0.46 && lookCycle < 0.66) return 'look-right';
+      const peekCycle = (t % 4.6) / 4.6;
+      if (peekCycle >= 0.20 && peekCycle < 0.42) return 'look-right';
+      if (peekCycle >= 0.55 && peekCycle < 0.78) return 'look-left';
       return 'default';
     },
 
-    getTransform(t, characterHeight) {
-      const hopPhase = (t % 5.2) / 5.2;
-      let translateY = 0;
-      let scaleX = 1;
-      let scaleY = 1;
-
-      if (hopPhase >= 0.60 && hopPhase <= 0.88) {
-        if (hopPhase < 0.68) {
-          const p = (hopPhase - 0.60) / 0.08;
-          scaleX = 1 + 0.06 * p;
-          scaleY = 1 - 0.06 * p;
-        } else if (hopPhase < 0.78) {
-          const p = Math.sin(((hopPhase - 0.68) / 0.10) * Math.PI);
-          translateY = -0.065 * characterHeight * p;
-          scaleX = 0.94;
-          scaleY = 1.06;
-        } else {
-          const p = (0.88 - hopPhase) / 0.10;
-          scaleX = 1 + 0.06 * p;
-          scaleY = 1 - 0.06 * p;
-        }
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      if (moving) {
+        const hop = Math.sin(movingT * Math.PI);
+        return {
+          translateY: -characterHeight * 0.07 * hop,
+          translateX: 0,
+          rotate: Math.sin(movingT * Math.PI * 2) * (4 * Math.PI / 180),
+          scaleX: 1 - 0.05 * hop,
+          scaleY: 1 + 0.06 * hop,
+          alpha: 1,
+          shadowScale: 1 - 0.1 * hop
+        };
       }
-      return { translateY, translateX: 0, rotate: 0, scaleX, scaleY };
+
+      const squashPhase = (t % 3.8) / 3.8;
+      const squashSin = Math.sin(squashPhase * Math.PI * 2);
+      const scaleX = 1 + 0.035 * squashSin;
+      const scaleY = 1 - 0.045 * squashSin;
+
+      const jigglePhase = (t % 5.2) / 5.2;
+      const rotate = Math.sin(jigglePhase * Math.PI * 2) * (3.5 * Math.PI / 180);
+
+      return { translateY: 0, translateX: 0, rotate, scaleX, scaleY, alpha: 1, shadowScale: 1 };
     },
 
     isBlinking(t) {
@@ -404,7 +469,7 @@ export const ANIMATION_PROFILES = {
     getRecipeFrameOptions(baseOptions, frame) {
       const opts = { ...baseOptions };
       if (frame === 'blink') {
-        opts.eyesVariant = ['squint'];
+        opts.eyesVariant = ['happy'];
         opts.eyesProbability = 100;
       }
       return opts;
@@ -412,13 +477,13 @@ export const ANIMATION_PROFILES = {
 
     makeFrameSvg(svg, frame) {
       if (frame === 'blink') {
-        return svg.replace(/class="dbga-eye"/g, 'class="dbga-eye" opacity="0.1"');
+        return svg.replace(/class="dbcl-ep"/g, 'class="dbcl-ep" opacity="0.15"');
       }
       if (frame === 'look-left') {
-        return svg.replace(/class="dbga-look"/g, 'class="dbga-look" transform="translate(-3.6, 0.9)"');
+        return svg.replace(/class="dbcl-ep"/g, 'class="dbcl-ep" transform="translate(-1.8, -0.8)"');
       }
       if (frame === 'look-right') {
-        return svg.replace(/class="dbga-look"/g, 'class="dbga-look" transform="translate(3.4, -0.7)"');
+        return svg.replace(/class="dbcl-ep"/g, 'class="dbcl-ep" transform="translate(1.8, -0.8)"');
       }
       return svg;
     }
@@ -440,10 +505,23 @@ export const ANIMATION_PROFILES = {
       return 'default';
     },
 
-    getTransform(t, characterHeight) {
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      if (moving) {
+        const hop = Math.sin(movingT * Math.PI);
+        return {
+          translateY: -characterHeight * 0.08 * hop,
+          translateX: 0,
+          rotate: Math.sin(movingT * Math.PI * 2) * (5 * Math.PI / 180),
+          scaleX: 1,
+          scaleY: 1,
+          alpha: 1,
+          shadowScale: 1 - 0.1 * hop
+        };
+      }
+
       const swayPhase = (t % 4.4) / 4.4;
       const rotate = Math.sin(swayPhase * Math.PI * 2) * (2.8 * Math.PI / 180);
-      return { translateY: 0, translateX: 0, rotate, scaleX: 1, scaleY: 1 };
+      return { translateY: 0, translateX: 0, rotate, scaleX: 1, scaleY: 1, alpha: 1, shadowScale: 1 };
     },
 
     isBlinking(t) {

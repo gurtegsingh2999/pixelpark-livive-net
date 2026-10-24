@@ -204,28 +204,46 @@ export class WorldRenderer {
     const footX = (position.x + 0.5) * TILE;
     const footY = (position.y + 1) * TILE;
     const movingT = character.moving ? clamp(character.elapsed / character.duration, 0, 1) : 0;
-    const idle = Math.sin(game.time * 2.2 + (hashString(character.id) % 100)) * 0.7;
     const cheerHop = isCompanion && character.cheerTimer > 0
       ? Math.abs(Math.sin((1.4 - character.cheerTimer) * 14)) * TILE * 0.45
       : 0;
-    const lift = character.moving
-      ? Math.sin(movingT * Math.PI) * TILE * 0.09
-      : (idle * 0.3 + cheerHop);
+
     const profile = getAnimationProfile(character.recipe);
     // Hash character id to de-synchronize blinks and idle cycles so neighbours don't blink in unison
     const charTimeOffset = (hashString(character.id || 'char') % 1000) * 0.01;
     const animTime = (game.time || 0) + charTimeOffset;
 
-    // Determine family-specific procedural transform (stretch, hop, bob, jiggle, sway)
-    const animTransform = profile.getTransform ? profile.getTransform(animTime, height) : { translateY: 0, rotate: 0, scaleX: 1, scaleY: 1 };
+    // Determine family-specific procedural transform (both idle AND movement locomotion)
+    const animTransform = profile.getTransform
+      ? profile.getTransform(animTime, height, {
+          moving: Boolean(character.moving),
+          movingT,
+          direction: character.direction
+        })
+      : { translateY: 0, translateX: 0, rotate: 0, scaleX: 1, scaleY: 1, alpha: 1, shadowScale: 1 };
 
-    // Apply family-specific transform only when idle or spectator
-    const idleTranslateY = character.moving ? 0 : (animTransform.translateY || 0);
-    const idleScaleX = character.moving ? 1 : (animTransform.scaleX ?? 1);
-    const idleScaleY = character.moving ? 1 : (animTransform.scaleY ?? 1);
-    const idleRotate = character.moving ? 0 : (animTransform.rotate || 0);
+    const tx = animTransform.translateX || 0;
+    const ty = (animTransform.translateY || 0) - cheerHop;
+    const scaleX = animTransform.scaleX ?? 1;
+    const scaleY = animTransform.scaleY ?? 1;
+    const rotate = animTransform.rotate || 0;
+    const alpha = animTransform.alpha ?? 1;
+    const shadowScale = animTransform.shadowScale ?? 1;
 
-    const top = footY - height - lift + idleTranslateY;
+    const top = footY - height + ty;
+
+    // Holographic projection glow on the ground for floating digi-buddies ('gaze')
+    if (animTransform.hologramGlow) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(footX + tx * 0.5, footY - 3, TILE * 0.28 * shadowScale, TILE * 0.10 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(102, 217, 232, 0.26)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(153, 233, 242, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     if (character === game.player || character === game.selected || character === game.hovered) {
       ctx.beginPath();
@@ -241,8 +259,8 @@ export class WorldRenderer {
     let targetFrame = 'default';
     if (profile.getFrame) {
       const f = profile.getFrame(animTime);
-      // While moving, still allow blink, otherwise default
-      targetFrame = (character.moving && f !== 'blink') ? 'default' : f;
+      // Allow gaze companions to look around even while floating; other walkers default during step unless blinking
+      targetFrame = (character.moving && f !== 'blink' && !animTransform.hologramGlow) ? 'default' : f;
     } else if (profile.isBlinking && profile.isBlinking(animTime)) {
       targetFrame = 'blink';
     }
@@ -257,14 +275,14 @@ export class WorldRenderer {
     if (image) {
       const flip = shouldMirror(character.direction);
       ctx.save();
-      if (idleRotate !== 0 || idleScaleX !== 1 || idleScaleY !== 1) {
-        // Transform around base / feet
-        ctx.translate(footX, footY);
-        if (idleRotate !== 0) ctx.rotate(idleRotate);
-        if (idleScaleX !== 1 || idleScaleY !== 1) ctx.scale(idleScaleX, idleScaleY);
-        ctx.translate(-footX, -footY);
+      if (tx !== 0 || rotate !== 0 || scaleX !== 1 || scaleY !== 1) {
+        // Transform around character anchor (footX + tx, footY) so compression squashes downward toward the ground
+        ctx.translate(footX + tx, footY);
+        if (rotate !== 0) ctx.rotate(flip ? -rotate : rotate);
+        if (scaleX !== 1 || scaleY !== 1) ctx.scale(scaleX, scaleY);
+        ctx.translate(-(footX + tx), -footY);
       }
-      drawAvatar(ctx, image, footX - width / 2, top, width, height, flip);
+      drawAvatar(ctx, image, footX + tx - width / 2, top, width, height, flip, alpha);
       ctx.restore();
     } else {
       const frames = profile.frames || ['default', 'blink'];

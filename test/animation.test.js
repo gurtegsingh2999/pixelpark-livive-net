@@ -85,9 +85,25 @@ test('family animation profiles have different transforms and loops', () => {
   const clayTransform = clay.getTransform(0.95, 48);
   assert.notEqual(clayTransform.scaleY, 1);
 
-  // Gaze hops with translateY
-  const gazeTransform = gaze.getTransform(3.8, 48); // ~73% of 5.2s
-  assert.ok(gazeTransform.translateY < 0);
+  // Gaze levitates continuously as a floating hologram (translateY < 0 and hologramGlow: true)
+  const gazeTransform = gaze.getTransform(1.0, 48);
+  assert.ok(gazeTransform.translateY < -4);
+  assert.equal(gazeTransform.hologramGlow, true);
+
+  // Voxel-bot rolls on wheels without hopping when moving (translateY === 0, leans forward)
+  const bot = ANIMATION_PROFILES['voxel-bot'];
+  const botMoving = bot.getTransform(1.0, 48, { moving: true, movingT: 0.5 });
+  assert.equal(botMoving.translateY, 0);
+  assert.notEqual(botMoving.rotate, 0);
+
+  // Critters compress down toward the ground (scaleY < 1, scaleX > 1, translateY === 0) and wobble side to side when moving
+  const critters = ANIMATION_PROFILES['critters'];
+  const critterMoving = critters.getTransform(1.0, 48, { moving: true, movingT: 0.25 });
+  assert.equal(critterMoving.translateY, 0);
+  assert.ok(critterMoving.scaleY < 1);
+  assert.ok(critterMoving.scaleX > 1);
+  assert.notEqual(critterMoving.rotate, 0);
+  assert.notEqual(critterMoving.translateX, 0);
 
   // Voxel-art stretches with height translateY
   const voxelTransform = voxel.getTransform(3.5, 48); // ~78% of 4.5s
