@@ -496,20 +496,31 @@ body.wizard-open canvas#world {
 
 @media (max-width: 600px) {
   .dialogue {
-    width: min(290px, calc(100vw - 24px));
-    padding: 10px 12px;
+    width: min(260px, calc(100vw - 32px));
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+
+  .dialogue-name {
+    font-size: 10px !important;
+    margin-bottom: 2px !important;
   }
 
   #dialogue-text {
-    font-size: 13px !important;
-    margin-bottom: 8px !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    margin: 0 0 8px 0 !important;
+  }
+
+  .dialogue-choices {
+    gap: 6px !important;
   }
 
   .dialogue-choices .pill,
   .dialogue-choices .primary {
-    min-height: 32px !important;
-    padding: 5px 12px !important;
-    font-size: 11.5px !important;
+    min-height: 28px !important;
+    padding: 4px 10px !important;
+    font-size: 11px !important;
   }
 }
 
@@ -1133,19 +1144,6 @@ body.dialogue-open .topbar {
     right: 10px;
     width: 230px;
   }
-
-  .dialogue {
-    bottom: 12px;
-    grid-template-columns: 76px minmax(0, 1fr);
-    gap: 12px;
-    padding: 12px;
-  }
-
-  .dialogue-portrait,
-  .dialogue-portrait img {
-    width: 76px;
-    height: 76px;
-  }
 }
 
 @media (max-width: 520px) {
@@ -1179,25 +1177,6 @@ body.dialogue-open .topbar {
     right: 10px;
     width: auto;
     max-height: 52vh;
-  }
-
-  .dialogue {
-    bottom: 10px;
-    grid-template-columns: 62px minmax(0, 1fr);
-    gap: 10px;
-    width: calc(100vw - 20px);
-    padding: 10px;
-    border-radius: 14px;
-  }
-
-  .dialogue-portrait,
-  .dialogue-portrait img {
-    width: 62px;
-    height: 62px;
-  }
-
-  #dialogue-text {
-    font-size: 12.5px;
   }
 
   .wizard-header {

@@ -316,15 +316,19 @@ export class Game {
       return false;
     }
 
-    // Check collision with Companions (opens dialogue with companion details)
+    // Check collision with Companions (opens dialogue only with NPC companions, not player's companions)
     const bumpComp = occupantAtTile(this.companions, nx, ny);
-    if (bumpComp) {
+    if (bumpComp && canCollide(this.player, bumpComp)) {
       this.openDialogueWith(bumpComp);
       return false;
     }
 
-    // Prevent stepping into any tile reserved by an NPC or Companion
-    const reservedBy = reservationAtTile([...this.npcs, ...this.companions], nx, ny);
+    // Prevent stepping into any tile reserved by an NPC or colliding Companion
+    const reservedBy = reservationAtTile(
+      [...this.npcs, ...this.companions].filter(other => canCollide(this.player, other)),
+      nx,
+      ny
+    );
     if (reservedBy) {
       this.heldKeys = [];
       this.player.path = [];
