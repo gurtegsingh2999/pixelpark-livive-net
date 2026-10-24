@@ -330,7 +330,8 @@ function ensureGame() {
       onSelect: character => panels?.showCard(character),
       onToast: showToast,
       onDialogue: openDialogue,
-      onActionKey: handleActionKey
+      onActionKey: handleActionKey,
+      isMenuOpen: () => Boolean(panels?.isMenuOpen?.())
     });
 
     fetchGame = new FetchMiniGame({ game, onToast: showToast });

@@ -148,6 +148,7 @@ export class PanelsUI {
       const row = document.createElement('div');
       row.className = 'friend-row';
       row.setAttribute('role', 'listitem');
+      row.tabIndex = 0;
 
       const icon = document.createElement('span');
       icon.style.fontSize = '28px';
@@ -167,19 +168,11 @@ export class PanelsUI {
       desc.textContent = item.description;
       copy.append(name, desc);
 
-      const action = document.createElement('button');
-      action.type = 'button';
-      action.className = 'pill';
-
-      if (item.id === 'ball') {
-        action.textContent = 'Throw';
-        action.addEventListener('click', () => {
+      row.addEventListener('click', () => {
+        if (item.id === 'ball') {
           this.closeMenu();
           this.onThrowBall?.({ color: item.color });
-        });
-      } else if (item.id === 'tic-tac-toe') {
-        action.textContent = this.isTTTOpen?.() ? 'Pack up' : 'Unfurl';
-        action.addEventListener('click', () => {
+        } else if (item.id === 'tic-tac-toe') {
           this.closeMenu();
           if (this.isTTTOpen?.()) {
             this.onPackUpTTT?.();
@@ -187,10 +180,10 @@ export class PanelsUI {
             const friend = this.friendNpcs()[0] || game.npcs[0];
             this.onUnfurlTTT?.(friend);
           }
-        });
-      }
+        }
+      });
 
-      row.append(icon, copy, action);
+      row.append(icon, copy);
       fragment.append(row);
     }
     list.append(fragment);
@@ -248,6 +241,7 @@ export class PanelsUI {
     const row = document.createElement('div');
     row.className = 'friend-row';
     row.setAttribute('role', 'listitem');
+    row.tabIndex = 0;
 
     const image = document.createElement('img');
     bindAnimatedAvatar(image, companion.recipe, 0);
@@ -260,15 +254,11 @@ export class PanelsUI {
     sub.textContent = `${info.class} · Following you`;
     copy.append(name, sub);
 
-    const action = document.createElement('button');
-    action.type = 'button';
-    action.className = 'pill';
-    action.textContent = 'Inspect';
-    action.addEventListener('click', () => {
+    row.addEventListener('click', () => {
       this.showCard(companion);
     });
 
-    row.append(image, copy, action);
+    row.append(image, copy);
     list.append(row);
   }
 
@@ -405,6 +395,7 @@ export class PanelsUI {
       const row = document.createElement('div');
       row.className = 'friend-row';
       row.setAttribute('role', 'listitem');
+      row.tabIndex = 0;
 
       const image = document.createElement('img');
       bindAnimatedAvatar(image, npc.recipe, Math.random() * 5);
@@ -417,15 +408,11 @@ export class PanelsUI {
       vibe.textContent = npc.vibe || 'Park friend';
       copy.append(name, vibe);
 
-      const action = document.createElement('button');
-      action.type = 'button';
-      action.className = 'pill';
-      action.textContent = 'Card';
-      action.addEventListener('click', () => {
+      row.addEventListener('click', () => {
         this.showCard(npc);
       });
 
-      row.append(image, copy, action);
+      row.append(image, copy);
       fragment.append(row);
     }
     list.append(fragment);
@@ -483,13 +470,9 @@ export class PanelsUI {
 
   updateDebugUI() {
     const game = this.getGame();
-    const wanderBtn = $('debug-wander-btn');
     const wanderLabel = $('debug-wander-label');
-    if (wanderBtn && game) {
-      wanderBtn.textContent = game.wander ? 'Pause' : 'Resume';
-      if (wanderLabel) {
-        wanderLabel.textContent = game.wander ? 'Neighbours are currently wandering' : 'Neighbours are staying put';
-      }
+    if (game && wanderLabel) {
+      wanderLabel.textContent = game.wander ? 'Neighbours are wandering (press Enter to pause)' : 'Neighbours are staying put (press Enter to resume)';
     }
   }
 
@@ -567,10 +550,10 @@ export class PanelsUI {
     else if (this.activeTab === 'debug') container = $('debug-actions');
 
     if (!container) return [];
-    const buttons = Array.from(container.querySelectorAll('button'));
-    if (buttons.length) return buttons;
     const rows = Array.from(container.querySelectorAll('.friend-row'));
-    return rows;
+    if (rows.length) return rows;
+    const buttons = Array.from(container.querySelectorAll('button'));
+    return buttons;
   }
 
   removeVerticalFocus() {
@@ -621,6 +604,7 @@ export class PanelsUI {
     } else if (item) {
       const btn = item.querySelector('button');
       if (btn) btn.click();
+      else item.click();
     }
   }
 
@@ -631,6 +615,12 @@ export class PanelsUI {
 
       const key = event.key.toLowerCase();
 
+      if (key === 'arrowleft' || key === 'arrowright' || key === 'arrowup' || key === 'arrowdown' ||
+          key === 'a' || key === 'd' || key === 'w' || key === 's') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
       if (key === 'escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -639,29 +629,21 @@ export class PanelsUI {
       }
 
       if (key === 'arrowleft' || key === 'a') {
-        event.preventDefault();
-        event.stopPropagation();
         this.cycleTab(-1);
         return;
       }
 
       if (key === 'arrowright' || key === 'd') {
-        event.preventDefault();
-        event.stopPropagation();
         this.cycleTab(1);
         return;
       }
 
       if (key === 'arrowup' || key === 'w') {
-        event.preventDefault();
-        event.stopPropagation();
         this.navigateVertical(-1);
         return;
       }
 
       if (key === 'arrowdown' || key === 's') {
-        event.preventDefault();
-        event.stopPropagation();
         this.navigateVertical(1);
         return;
       }
@@ -692,16 +674,16 @@ export class PanelsUI {
     $('debug-toggle')?.addEventListener('click', () => this.toggleDebugPanel());
     $('debug-close')?.addEventListener('click', () => this.closeMenu());
 
-    $('debug-wander-btn')?.addEventListener('click', () => {
+    $('debug-wander-row')?.addEventListener('click', () => {
       this.onToggleWander?.();
       this.updateDebugUI();
     });
 
-    $('debug-add-npc')?.addEventListener('click', () => {
+    $('debug-add-row')?.addEventListener('click', () => {
       this.onAddNeighbour?.();
     });
 
-    $('debug-new-park')?.addEventListener('click', () => {
+    $('debug-new-row')?.addEventListener('click', () => {
       this.onNewPark?.();
     });
 

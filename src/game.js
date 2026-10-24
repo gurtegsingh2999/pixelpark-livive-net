@@ -32,13 +32,14 @@ function clamp(value, min, max) {
 }
 
 export class Game {
-  constructor({ canvas, minimap, onSelect, onToast, onDialogue, onActionKey } = {}) {
+  constructor({ canvas, minimap, onSelect, onToast, onDialogue, onActionKey, isMenuOpen } = {}) {
     this.canvas = canvas;
     this.renderer = new WorldRenderer({ canvas, minimap });
     this.onSelect = onSelect || (() => {});
     this.onToast = onToast || (() => {});
     this.onDialogue = onDialogue || (() => {});
     this.onActionKey = onActionKey || (() => {});
+    this.isMenuOpen = isMenuOpen || (() => false);
 
     this.terrain = null;
     this.worldSeed = null;
@@ -692,6 +693,7 @@ export class Game {
   handleKeyDown(event) {
     if (!this.interactive || !this.player) return;
     if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (this.isMenuOpen()) return;
 
     if (event.key === 'Enter' || event.key === ' ') {
       this.onActionKey?.(this.player);

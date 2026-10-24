@@ -188,6 +188,16 @@ body.wizard-open canvas#world {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+.friend-row {
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.friend-row:hover {
+  background: rgba(31, 47, 35, 0.75);
+  border-color: var(--line-strong);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
