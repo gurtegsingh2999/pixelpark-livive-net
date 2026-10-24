@@ -139,9 +139,9 @@ export function avatarSvg(recipe, { frame = 'default' } = {}) {
       rawSvg = createVoxelAvatar(recipeOptions(recipe));
     }
 
-    if (frame === 'blink') {
+    if (frame !== 'default') {
       const profile = getAnimationProfile(recipe);
-      svgCache.set(key, profile.makeBlinkSvg ? profile.makeBlinkSvg(rawSvg) : rawSvg);
+      svgCache.set(key, profile.makeFrameSvg ? profile.makeFrameSvg(rawSvg, frame) : rawSvg);
     } else {
       svgCache.set(key, rawSvg);
     }
@@ -194,6 +194,10 @@ export async function preloadAvatars(recipes) {
   for (const recipe of unique.values()) {
     promises.push(loadAvatarImage(recipe, { frame: 'default' }));
     promises.push(loadAvatarImage(recipe, { frame: 'blink' }));
+    if (!recipe.isCompanion) {
+      promises.push(loadAvatarImage(recipe, { frame: 'look-left' }));
+      promises.push(loadAvatarImage(recipe, { frame: 'look-right' }));
+    }
   }
   const results = await Promise.allSettled(promises);
   return results.filter(result => result.status === 'fulfilled').length;

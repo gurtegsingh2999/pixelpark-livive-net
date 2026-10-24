@@ -10,7 +10,7 @@ test('ANIMATION_PROFILES defines distinct isolated animations for each family', 
     assert.ok(profile, `Profile for ${family} must exist`);
     assert.equal(typeof profile.getTransform, 'function', `${family} must have getTransform`);
     assert.equal(typeof profile.isBlinking, 'function', `${family} must have isBlinking`);
-    assert.equal(typeof profile.makeBlinkSvg, 'function', `${family} must have makeBlinkSvg`);
+    assert.equal(typeof profile.makeFrameSvg, 'function', `${family} must have makeFrameSvg`);
   }
 });
 
@@ -39,10 +39,24 @@ test('avatarSvg supports default and blink frames for voxel-art and companions',
   assert.ok(blinkBotSvg.includes('opacity="1"'));
 });
 
+test('voxel-art supports gaze directions: look-left and look-right', () => {
+  const voxelRecipe = createRecipe('test');
+  const defaultSvg = avatarSvg(voxelRecipe, { frame: 'default' });
+  const leftSvg = avatarSvg(voxelRecipe, { frame: 'look-left' });
+  const rightSvg = avatarSvg(voxelRecipe, { frame: 'look-right' });
+
+  assert.notEqual(defaultSvg, leftSvg);
+  assert.notEqual(defaultSvg, rightSvg);
+  assert.notEqual(leftSvg, rightSvg);
+  assert.ok(leftSvg.includes('translate(26.5 49)'));
+  assert.ok(rightSvg.includes('translate(31.5 49)'));
+});
+
 test('family animation profiles have different transforms and loops', () => {
   const gaze = ANIMATION_PROFILES['gaze'];
   const sprouts = ANIMATION_PROFILES['sprouts'];
   const clay = ANIMATION_PROFILES['clay'];
+  const voxel = ANIMATION_PROFILES['voxel-art'];
 
   // Sprouts sways with rotation
   const sproutsTransform = sprouts.getTransform(1.1, 48);
@@ -55,4 +69,9 @@ test('family animation profiles have different transforms and loops', () => {
   // Gaze hops with translateY
   const gazeTransform = gaze.getTransform(3.8, 48); // ~73% of 5.2s
   assert.ok(gazeTransform.translateY < 0);
+
+  // Voxel-art stretches with height translateY
+  const voxelTransform = voxel.getTransform(4.8, 48); // ~87% of 5.5s
+  assert.ok(voxelTransform.translateY < 0);
+  assert.ok(voxelTransform.scaleY > 1);
 });

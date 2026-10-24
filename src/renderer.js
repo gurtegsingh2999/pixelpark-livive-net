@@ -237,11 +237,18 @@ export class WorldRenderer {
       ctx.stroke();
     }
 
-    // Determine blink frame: alternate to closed-eye frame during family's blink window
+    // Determine animation frame: blink takes priority, then eye gaze direction (left/right/center)
     const isBlink = profile.isBlinking ? profile.isBlinking(animTime) : false;
-    let image = isBlink ? getAvatarImage(character.recipe, { frame: 'blink' }) : getAvatarImage(character.recipe, { frame: 'default' });
+    let targetFrame = 'default';
+    if (isBlink) {
+      targetFrame = 'blink';
+    } else if (!character.moving && profile.getLookDirection) {
+      targetFrame = profile.getLookDirection(animTime);
+    }
+
+    let image = getAvatarImage(character.recipe, { frame: targetFrame });
     if (!image) {
-      // Fallback to default frame if blink image hasn't loaded yet
+      // Fallback to default frame if specific frame is still decoding
       image = getAvatarImage(character.recipe, { frame: 'default' });
     }
 
@@ -260,6 +267,10 @@ export class WorldRenderer {
     } else {
       loadAvatarImage(character.recipe, { frame: 'default' }).catch(() => {});
       loadAvatarImage(character.recipe, { frame: 'blink' }).catch(() => {});
+      if (!character.isCompanion) {
+        loadAvatarImage(character.recipe, { frame: 'look-left' }).catch(() => {});
+        loadAvatarImage(character.recipe, { frame: 'look-right' }).catch(() => {});
+      }
       ctx.fillStyle = 'rgba(20, 30, 22, 0.8)';
       ctx.beginPath();
       ctx.arc(footX, footY - height * 0.45, height * 0.3, 0, Math.PI * 2);
