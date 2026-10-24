@@ -1,4 +1,4 @@
-import { findPath, isWalkable, typeAt } from '../world.js';
+import { findPath, findOpenTile, isWalkable, typeAt } from '../world.js';
 import { recordGameResult } from '../storage.js';
 
 export const CHECKERS_BOARD_SIZE = 8;
@@ -164,6 +164,11 @@ export class CheckersMiniGame {
       }
     }
 
+    // Flee bystanders (NPCs and companions) caught standing on the newly launched board
+    const oppComp = opponent ? this.game.getCompanionFor?.(opponent.id) : null;
+    const playerComp = playerComps[0] || null;
+    this.evacuateBoard(spot.originX, spot.originY, [player, playerComp, opponent, oppComp]);
+
     this.activeBoard = {
       originX: spot.originX,
       originY: spot.originY,
@@ -249,6 +254,14 @@ export class CheckersMiniGame {
     const isPlayer = character === this.game.player;
     const isOpponent = character === this.activeBoard?.opponent;
     const isStagingCompanion = character.isCompanion && Boolean(character.stagedDestination);
+
+    // If an NPC or companion is currently standing on the board (e.g. escaping / fleeing),
+    // allow them to step off the board rather than trapping them in place
+    const currentlyOnBoard = this.isTileOnBoard(character.x, character.y);
+    if (currentlyOnBoard && !this.isTileOnBoard(nx, ny)) {
+      return false; // Escaping off the board is always permitted
+    }
+
     return !isPlayer && !isOpponent && !isStagingCompanion;
   }
 
@@ -257,6 +270,53 @@ export class CheckersMiniGame {
     const { originX, originY } = this.activeBoard;
     const size = CHECKERS_BOARD_SIZE;
     return x >= originX && x < originX + size && y >= originY && y < originY + size;
+  }
+
+  evacuateBoard(originX, originY, participants = []) {
+    if (!this.game) return;
+    const size = CHECKERS_BOARD_SIZE;
+    const participantSet = new Set(participants.filter(Boolean));
+    const boardTiles = new Set();
+    for (let dy = 0; dy < size; dy++) {
+      for (let dx = 0; dx < size; dx++) {
+        boardTiles.add(`${originX + dx},${originY + dy}`);
+      }
+    }
+
+    // Collect all NPCs and companions that are not active participants
+    const bystanders = [
+      ...(this.game.npcs || []).filter(npc => !participantSet.has(npc)),
+      ...(this.game.companions || []).filter(comp => !participantSet.has(comp))
+    ];
+
+    // Identify reserved spots around board (e.g. participant staging locations)
+    const reservedTiles = new Set(boardTiles);
+    for (const p of participants) {
+      if (p) reservedTiles.add(`${p.x},${p.y}`);
+    }
+
+    for (const bystander of bystanders) {
+      const curX = bystander.moving ? bystander.toX : bystander.x;
+      const curY = bystander.moving ? bystander.toY : bystander.y;
+
+      if (boardTiles.has(`${curX},${curY}`)) {
+        // Bystander is standing on the spawning 8x8 board: find open tile off the board to flee to
+        const escapeTile = findOpenTile(this.game.terrain, { x: curX, y: curY }, reservedTiles, 1);
+        if (escapeTile) {
+          reservedTiles.add(`${escapeTile.x},${escapeTile.y}`);
+          const escapePath = findPath(this.game.terrain, { x: curX, y: curY }, escapeTile);
+          if (escapePath.length) {
+            bystander.path = escapePath;
+            bystander.moving = false;
+          } else {
+            bystander.x = escapeTile.x;
+            bystander.y = escapeTile.y;
+            bystander.path = [];
+            bystander.moving = false;
+          }
+        }
+      }
+    }
   }
 
   packUpBoard() {

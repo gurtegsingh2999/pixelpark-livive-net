@@ -179,3 +179,41 @@ test('checkers victory grants guaranteed companion and TTT grants 50% companion 
   // Should be close to 50% (allow tolerance [0.40, 0.60])
   assert.ok(rate >= 0.40 && rate <= 0.60, `TTT companion rate was ${rate}`);
 });
+
+test('mini-game boards evacuate bystander NPCs and companions upon unfurling and permit escape', () => {
+  const fakeTerrain = Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'grass'));
+  const bystanderNpc = { id: 'npc-bystander', x: 11, y: 11, moving: false, path: [] };
+  const bystanderComp = { id: 'comp-bystander', x: 12, y: 11, moving: false, path: [] };
+  const player = { id: 'player', x: 9, y: 11, moving: false, path: [] };
+  const opponent = { id: 'opp', x: 15, y: 11, moving: false, path: [] };
+
+  const fakeGame = {
+    terrain: fakeTerrain,
+    player,
+    npcs: [bystanderNpc, opponent],
+    companions: [bystanderComp],
+    getCompanionFor: () => null,
+    getCompanionsFor: () => []
+  };
+
+  const ttt = new TicTacToeMiniGame({ game: fakeGame });
+  // Evacuate 3x3 footprint at origin (10, 10)
+  ttt.evacuateBoard(10, 10, [player, opponent]);
+
+  // Bystander NPC and companion must have paths leading off the 3x3 footprint or moved outside
+  const isInside = (x, y) => x >= 10 && x <= 12 && y >= 10 && y <= 12;
+  const npcDest = bystanderNpc.path.length ? bystanderNpc.path[bystanderNpc.path.length - 1] : bystanderNpc;
+  const compDest = bystanderComp.path.length ? bystanderComp.path[bystanderComp.path.length - 1] : bystanderComp;
+
+  assert.equal(isInside(npcDest.x, npcDest.y), false);
+  assert.equal(isInside(compDest.x, compDest.y), false);
+
+  // Escaping off the board must not be blocked by blocksStep
+  ttt.activeBoard = { originX: 10, originY: 10, opponent };
+  // Stepping from inside (11, 11) to outside (9, 11) is permitted
+  assert.equal(ttt.blocksStep(bystanderNpc, 9, 11), false);
+  // Stepping from outside (9, 11) into the board (10, 10) is blocked for bystanders
+  bystanderNpc.x = 9;
+  bystanderNpc.y = 11;
+  assert.equal(ttt.blocksStep(bystanderNpc, 10, 10), true);
+});

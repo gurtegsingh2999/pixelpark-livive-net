@@ -1,4 +1,4 @@
-import { findPath, isWalkable, typeAt } from '../world.js';
+import { findPath, findOpenTile, isWalkable, typeAt } from '../world.js';
 import { recordGameResult } from '../storage.js';
 
 export class TicTacToeMiniGame {
@@ -116,18 +116,21 @@ export class TicTacToeMiniGame {
       if (oppPath.length) opponent.path = oppPath;
       else { opponent.x = opponentTarget.x; opponent.y = opponentTarget.y; }
       opponent.direction = 3; // Facing left toward board
-
-      // Auto-walk Opponent's companion directly to right of Tile 9
-      const oppComp = this.game.getCompanionFor(opponent.id);
-      if (oppComp) {
-        oppComp.fetchTarget = null;
-        oppComp.stagedDestination = opponentCompTarget;
-        const oppCompPath = findPath(this.game.terrain, { x: oppComp.x, y: oppComp.y }, opponentCompTarget);
-        if (oppCompPath.length) oppComp.path = oppCompPath;
-        else { oppComp.x = opponentCompTarget.x; oppComp.y = opponentCompTarget.y; }
-        oppComp.direction = 3;
-      }
     }
+
+    // Auto-walk Opponent's companion directly to right of Tile 9
+    const oppComp = opponent ? this.game.getCompanionFor(opponent.id) : null;
+    if (opponent && oppComp) {
+      oppComp.fetchTarget = null;
+      oppComp.stagedDestination = opponentCompTarget;
+      const oppCompPath = findPath(this.game.terrain, { x: oppComp.x, y: oppComp.y }, opponentCompTarget);
+      if (oppCompPath.length) oppComp.path = oppCompPath;
+      else { oppComp.x = opponentCompTarget.x; oppComp.y = opponentCompTarget.y; }
+      oppComp.direction = 3;
+    }
+
+    // Flee bystanders (NPCs and companions) caught standing on the newly launched board
+    this.evacuateBoard(spot.originX, spot.originY, [player, playerComp, opponent, oppComp]);
 
     this.activeBoard = {
       originX: spot.originX,
@@ -218,6 +221,14 @@ export class TicTacToeMiniGame {
     const isPlayer = character === this.game.player;
     const isOpponent = character === this.activeBoard?.opponent;
     const isStagingCompanion = character.isCompanion && Boolean(character.stagedDestination);
+
+    // If an NPC or companion is currently standing on the board (e.g. escaping / fleeing),
+    // allow them to step off the board rather than trapping them in place
+    const currentlyOnBoard = this.isTileOnBoard(character.x, character.y);
+    if (currentlyOnBoard && !this.isTileOnBoard(nx, ny)) {
+      return false; // Escaping off the board is always permitted
+    }
+
     return !isPlayer && !isOpponent && !isStagingCompanion;
   }
 
@@ -225,6 +236,52 @@ export class TicTacToeMiniGame {
     if (!this.activeBoard) return false;
     const { originX, originY } = this.activeBoard;
     return x >= originX && x <= originX + 2 && y >= originY && y <= originY + 2;
+  }
+
+  evacuateBoard(originX, originY, participants = []) {
+    if (!this.game) return;
+    const participantSet = new Set(participants.filter(Boolean));
+    const boardTiles = new Set();
+    for (let dy = 0; dy < 3; dy++) {
+      for (let dx = 0; dx < 3; dx++) {
+        boardTiles.add(`${originX + dx},${originY + dy}`);
+      }
+    }
+
+    // Collect all NPCs and companions that are not active participants
+    const bystanders = [
+      ...(this.game.npcs || []).filter(npc => !participantSet.has(npc)),
+      ...(this.game.companions || []).filter(comp => !participantSet.has(comp))
+    ];
+
+    // Identify reserved spots around board (e.g. participant staging locations)
+    const reservedTiles = new Set(boardTiles);
+    for (const p of participants) {
+      if (p) reservedTiles.add(`${p.x},${p.y}`);
+    }
+
+    for (const bystander of bystanders) {
+      const curX = bystander.moving ? bystander.toX : bystander.x;
+      const curY = bystander.moving ? bystander.toY : bystander.y;
+
+      if (boardTiles.has(`${curX},${curY}`)) {
+        // Bystander is standing on the spawning board: find nearby open tile off the board to flee to
+        const escapeTile = findOpenTile(this.game.terrain, { x: curX, y: curY }, reservedTiles, 1);
+        if (escapeTile) {
+          reservedTiles.add(`${escapeTile.x},${escapeTile.y}`);
+          const escapePath = findPath(this.game.terrain, { x: curX, y: curY }, escapeTile);
+          if (escapePath.length) {
+            bystander.path = escapePath;
+            bystander.moving = false;
+          } else {
+            bystander.x = escapeTile.x;
+            bystander.y = escapeTile.y;
+            bystander.path = [];
+            bystander.moving = false;
+          }
+        }
+      }
+    }
   }
 
   startRefolding(onComplete) {
