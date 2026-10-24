@@ -10,8 +10,15 @@ export function directionForStep(dx, dy) {
   return LEFT;
 }
 
-// Voxel Art characters face slightly left by default, so only a rightward
-// step is mirrored.
+// Direction & Facing Orientation Conventions:
+// - Voxel Art characters & Cube World pet models are authored to face STAGE / SCREEN LEFT by default
+//   (their nose / snout points towards -X in screen coordinates).
+// - "Model Left" vs "Stage/Camera Left":
+//   * Model Left: The character's own left side / anatomical flank (+X in model space).
+//   * Stage / Camera Left: The viewer's left side of the screen (-X in canvas / screen space).
+//   * Because the model faces Stage Left, the character is looking towards the viewer's left.
+// - Therefore, DOWN (0), UP (2), and LEFT (3) all use the unmirrored sprite (facing screen-left).
+// - Only RIGHT (1) movement mirrors the sprite horizontally so the character turns to face screen-right.
 export function shouldMirror(direction) {
   return direction === RIGHT;
 }

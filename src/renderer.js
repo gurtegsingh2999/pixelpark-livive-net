@@ -12,6 +12,7 @@ import { getAnimationProfile } from './animation.js';
 export const TILE = 48;
 export const CHARACTER_HEIGHT = TILE * 1.72;
 export const COMPANION_HEIGHT = TILE * 1.05;
+export const PET_HEIGHT = TILE * 1.65; // Doubled size for Cube World animal pets to match park proportions
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -198,7 +199,9 @@ export class WorldRenderer {
   drawCharacter(game, character) {
     const { ctx } = this;
     const isCompanion = Boolean(character.isCompanion);
-    const height = isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
+    const profile = getAnimationProfile(character.recipe);
+    const isPet = Boolean(profile.family?.startsWith('pet-'));
+    const height = isCompanion ? (isPet ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
     const width = height;
     const position = game.interpolated(character);
     const footX = (position.x + 0.5) * TILE;
@@ -208,7 +211,6 @@ export class WorldRenderer {
       ? Math.abs(Math.sin((1.4 - character.cheerTimer) * 14)) * TILE * 0.45
       : 0;
 
-    const profile = getAnimationProfile(character.recipe);
     // Hash character id to de-synchronize blinks and idle cycles so neighbours don't blink in unison
     const charTimeOffset = (hashString(character.id || 'char') % 1000) * 0.01;
     const animTime = (game.time || 0) + charTimeOffset;
@@ -306,7 +308,9 @@ export class WorldRenderer {
   drawNameplate(game, character) {
     const { ctx } = this;
     const isCompanion = Boolean(character.isCompanion);
-    const height = isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
+    const profile = getAnimationProfile(character.recipe);
+    const isPet = Boolean(profile.family?.startsWith('pet-'));
+    const height = isCompanion ? (isPet ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
     const position = game.interpolated(character);
     const footX = (position.x + 0.5) * TILE - game.camera.x;
     const footY = (position.y + 1) * TILE - game.camera.y;
