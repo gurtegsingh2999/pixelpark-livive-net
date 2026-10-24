@@ -1,4 +1,5 @@
 import { avatarDataUrl, bindAnimatedAvatar } from './avatar.js';
+import { formatCompanionInfo } from './characters.js';
 
 export class DialogueManager {
   constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame } = {}) {
@@ -66,15 +67,25 @@ export class DialogueManager {
     }, { capture: true });
   }
 
-  open(npc, isFriend, { canPlayTicTacToe = false } = {}) {
-    if (!npc || !this.container) return;
-    this.dialogueNpc = npc;
+  open(character, isFriend, { canPlayTicTacToe = false } = {}) {
+    if (!character || !this.container) return;
+    this.dialogueNpc = character;
     document.body.classList.add('dialogue-open');
     this.container.hidden = false;
-    bindAnimatedAvatar(this.avatar, npc.recipe, 0);
-    this.avatar.alt = `${npc.name}'s character`;
-    this.name.textContent = npc.name;
+    bindAnimatedAvatar(this.avatar, character.recipe, 0);
+    this.avatar.alt = `${character.name}'s character`;
+    this.name.textContent = character.name;
 
+    // Handle companion dialogue (shows name, class, and type)
+    if (character.isCompanion) {
+      const info = formatCompanionInfo(character);
+      this.setBeat(info.text, [
+        { label: 'Nice buddy!', className: 'primary', onClick: () => this.close() }
+      ]);
+      return;
+    }
+
+    const npc = character;
     if (isFriend) {
       const choices = [];
       if (canPlayTicTacToe) {

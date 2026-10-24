@@ -265,12 +265,25 @@ export class Game {
     this.selected = this.getNpc(id) || this.companions.find(c => c.id === id) || null;
   }
 
+  allOtherCharacters(exclude = null) {
+    const list = [];
+    if (this.player && this.player !== exclude) list.push(this.player);
+    for (const npc of this.npcs) {
+      if (npc !== exclude) list.push(npc);
+    }
+    for (const comp of this.companions) {
+      if (comp !== exclude) list.push(comp);
+    }
+    return list;
+  }
+
   tryPlayerStep(dx, dy) {
     if (!this.player || !this.interactive || this.paused) return false;
     const nx = this.player.x + dx;
     const ny = this.player.y + dy;
     this.player.direction = directionForStep(dx, dy);
 
+    // Check collision with NPCs
     const bumpNpc = occupantAtTile(this.npcs, nx, ny);
     if (bumpNpc) {
       const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
@@ -284,7 +297,15 @@ export class Game {
       return false;
     }
 
-    const reservedBy = reservationAtTile(this.npcs, nx, ny);
+    // Check collision with Companions (opens dialogue with companion details)
+    const bumpComp = occupantAtTile(this.companions, nx, ny);
+    if (bumpComp) {
+      this.openDialogueWith(bumpComp);
+      return false;
+    }
+
+    // Prevent stepping into any tile reserved by an NPC or Companion
+    const reservedBy = reservationAtTile([...this.npcs, ...this.companions], nx, ny);
     if (reservedBy) {
       this.heldKeys = [];
       this.player.path = [];
@@ -356,6 +377,13 @@ export class Game {
     const nx = character.x + dx;
     const ny = character.y + dy;
     if (!isWalkable(typeAt(this.terrain, nx, ny))) return false;
+
+    // Strict occupancy and reservation collision:
+    // Check if target tile is occupied or reserved by any other character (player, NPC, or companion)
+    const otherCharacters = this.allOtherCharacters(character);
+    if (reservationAtTile(otherCharacters, nx, ny)) {
+      return false;
+    }
 
     // Check if any active mini-game blocks movement onto this tile
     for (const miniGame of this.miniGames) {
@@ -442,15 +470,9 @@ export class Game {
     if (npc.wait > 0) return;
 
     const occupied = new Set();
-    for (const other of this.npcs) {
-      if (other !== npc) {
-        occupied.add(`${other.x},${other.y}`);
-        if (other.moving) occupied.add(`${other.toX},${other.toY}`);
-      }
-    }
-    if (this.player) {
-      occupied.add(`${this.player.x},${this.player.y}`);
-      if (this.player.moving) occupied.add(`${this.player.toX},${this.player.toY}`);
+    for (const other of this.allOtherCharacters(npc)) {
+      occupied.add(`${other.x},${other.y}`);
+      if (other.moving) occupied.add(`${other.toX},${other.toY}`);
     }
 
     const options = [];
