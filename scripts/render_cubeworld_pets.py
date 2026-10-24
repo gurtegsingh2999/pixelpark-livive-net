@@ -326,24 +326,44 @@ def main():
         v, vt, vn, faces = parse_obj(path)
         animal_key = name.lower()
         
+        # Front-facing (Stage Left, yaw = 45°) for DOWN, LEFT, and mirrored for RIGHT
+        # Back-facing (Stage Left away from camera, yaw = 135°) for UP, and mirrored for UP-RIGHT
         sprites_data[animal_key] = {
+            # Front / forward-facing frames (facing camera):
             'default': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
                                    img_size=img_size, world_scale=unified_world_scale,
-                                   leg_swing=0, head_pitch=0),
+                                   yaw_deg=45, leg_swing=0, head_pitch=0),
             'idle2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
                                  img_size=img_size, world_scale=unified_world_scale,
-                                 leg_swing=0, head_pitch=-0.2),
+                                 yaw_deg=45, leg_swing=0, head_pitch=-0.2),
             'walk1': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
                                  img_size=img_size, world_scale=unified_world_scale,
-                                 leg_swing=0.45, head_pitch=0.1),
+                                 yaw_deg=45, leg_swing=0.45, head_pitch=0.1),
             'walk2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
                                  img_size=img_size, world_scale=unified_world_scale,
-                                 leg_swing=-0.45, head_pitch=-0.1),
+                                 yaw_deg=45, leg_swing=-0.45, head_pitch=-0.1),
             'cheer': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
                                  img_size=img_size, world_scale=unified_world_scale,
-                                 y_offset=0.25, leg_swing=0.2, head_pitch=0.3)
+                                 yaw_deg=45, y_offset=0.25, leg_swing=0.2, head_pitch=0.3),
+
+            # Reverse / back-facing frames (facing away from camera for walking UP):
+            'back_default': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                        img_size=img_size, world_scale=unified_world_scale,
+                                        yaw_deg=135, leg_swing=0, head_pitch=0),
+            'back_idle2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                      img_size=img_size, world_scale=unified_world_scale,
+                                      yaw_deg=135, leg_swing=0, head_pitch=-0.2),
+            'back_walk1': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                      img_size=img_size, world_scale=unified_world_scale,
+                                      yaw_deg=135, leg_swing=0.45, head_pitch=0.1),
+            'back_walk2': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                      img_size=img_size, world_scale=unified_world_scale,
+                                      yaw_deg=135, leg_swing=-0.45, head_pitch=-0.1),
+            'back_cheer': render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
+                                      img_size=img_size, world_scale=unified_world_scale,
+                                      yaw_deg=135, y_offset=0.25, leg_swing=0.2, head_pitch=0.3)
         }
-        print(f"Rendered {name:8s} with proportional 3D world scale and bright outdoor lighting")
+        print(f"Rendered {name:8s} front and back frames with proportional 3D world scale")
 
     with open(output_path, 'w') as f:
         json.dump(sprites_data, f, indent=2)

@@ -23,9 +23,12 @@ test('createCompanionRecipe supports pet styles and renders valid data URLs', ()
     // Walk and cheer frames
     const walk1Url = avatarDataUrl(recipe, { frame: 'walk1' });
     const cheerUrl = avatarDataUrl(recipe, { frame: 'cheer' });
+    const backWalkUrl = avatarDataUrl(recipe, { frame: 'back_walk1' });
     assert.ok(walk1Url.startsWith('data:image/png;base64,'));
     assert.ok(cheerUrl.startsWith('data:image/png;base64,'));
+    assert.ok(backWalkUrl.startsWith('data:image/png;base64,'));
     assert.notEqual(walk1Url, cheerUrl);
+    assert.notEqual(walk1Url, backWalkUrl);
 
     // SVG wrapper for UI embedding
     const svg = avatarSvg(recipe);

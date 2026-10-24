@@ -575,7 +575,10 @@ export const ANIMATION_PROFILES = {
 function makePetProfile(species, { trotHop = 0.05, wagTail = false, peck = false, waddle = false, idleSniff = false } = {}) {
   return {
     family: `pet-${species}`,
-    frames: ['default', 'idle2', 'walk1', 'walk2', 'cheer'],
+    frames: [
+      'default', 'idle2', 'walk1', 'walk2', 'cheer',
+      'back_default', 'back_idle2', 'back_walk1', 'back_walk2', 'back_cheer'
+    ],
 
     getFrame(t) {
       // 1. Idle head tilt / sniff / peck (every 4.0s for 0.8s)

@@ -17,7 +17,12 @@ export function directionForStep(dx, dy) {
 //   * Model Left: The character's own left side / anatomical flank (+X in model space).
 //   * Stage / Camera Left: The viewer's left side of the screen (-X in canvas / screen space).
 //   * Because the model faces Stage Left, the character is looking towards the viewer's left.
-// - Therefore, DOWN (0), UP (2), and LEFT (3) all use the unmirrored sprite (facing screen-left).
+// - Forward-facing (facing camera):
+//   * DOWN (0) and LEFT (3) use the unmirrored front sprite (facing front stage-left).
+//   * RIGHT (1) mirrors the front sprite horizontally (facing front stage-right).
+// - Reverse-facing (facing away from camera / walking UP):
+//   * UP (2) uses the reverse 3D view (yaw = 135°, facing back stage-left).
+//   * When facing UP and turning right, horizontal mirroring produces back stage-right.
 // - Only RIGHT (1) movement mirrors the sprite horizontally so the character turns to face screen-right.
 export function shouldMirror(direction) {
   return direction === RIGHT;

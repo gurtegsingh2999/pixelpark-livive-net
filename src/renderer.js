@@ -6,7 +6,7 @@ import {
   hashString
 } from './world.js';
 import { drawAvatar, getAvatarImage, loadAvatarImage } from './avatar.js';
-import { shouldMirror } from './facing.js';
+import { shouldMirror, UP } from './facing.js';
 import { getAnimationProfile } from './animation.js';
 
 export const TILE = 48;
@@ -270,6 +270,14 @@ export class WorldRenderer {
       targetFrame = (character.moving && f !== 'blink' && !animTransform.hologramGlow) ? 'default' : f;
     } else if (profile.isBlinking && profile.isBlinking(animTime)) {
       targetFrame = 'blink';
+    }
+
+    // For pet companions facing UP (away from camera), switch to the reverse 3D view
+    if (isPet && character.direction === UP) {
+      const backKey = `back_${targetFrame}`;
+      if (profile.frames?.includes(backKey)) {
+        targetFrame = backKey;
+      }
     }
 
     let image = getAvatarImage(character.recipe, { frame: targetFrame });
