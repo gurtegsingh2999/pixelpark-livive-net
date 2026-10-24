@@ -6,6 +6,7 @@ import { TicTacToeMiniGame } from '../src/games/tic-tac-toe.js';
 import { CheckersMiniGame } from '../src/games/checkers.js';
 import { FetchMiniGame } from '../src/games/fetch.js';
 import { recordGameResult, loadStats } from '../src/storage.js';
+import { rollReward, applyReward } from '../src/rewards.js';
 
 test('createStarterInventory yields ball, tic-tac-toe, and checkers', () => {
   const inv = createStarterInventory();
@@ -156,4 +157,25 @@ test('CheckersMiniGame initializes, detects moves, captures and kings', () => {
   assert.equal(checkers.activeBoard.pieces[0 * 8 + 3].king, true);
   // Jumped piece removed
   assert.equal(checkers.activeBoard.pieces[1 * 8 + 2], null);
+});
+
+test('checkers victory grants guaranteed companion and TTT grants 50% companion chance', () => {
+  const fakeGame = { player: { x: 30, y: 30, coins: 0 } };
+  
+  // Checkers win: Guaranteed new companion
+  const checkersReward = rollReward(fakeGame, 'checkers', 'win');
+  assert.ok(checkersReward);
+  assert.ok(checkersReward.newCompanion);
+  assert.equal(checkersReward.newCompanion.buddyId, 'player');
+
+  // Tic-Tac-Toe win: 50% bonus roll chance of companion
+  let compCount = 0;
+  const TRIALS = 400;
+  for (let i = 0; i < TRIALS; i++) {
+    const tttReward = rollReward(fakeGame, 'tic-tac-toe', 'win');
+    if (tttReward?.newCompanion) compCount++;
+  }
+  const rate = compCount / TRIALS;
+  // Should be close to 50% (allow tolerance [0.40, 0.60])
+  assert.ok(rate >= 0.40 && rate <= 0.60, `TTT companion rate was ${rate}`);
 });

@@ -226,14 +226,18 @@ export class CheckersMiniGame {
     if (!board || !board.opponent) return;
     const opponent = board.opponent;
     if (opponent.x !== board.sidelineX || opponent.y !== board.sidelineY) {
+      opponent.miniGameTarget = { x: board.sidelineX, y: board.sidelineY };
       const path = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: board.sidelineX, y: board.sidelineY });
       if (path.length) {
         opponent.path = path;
       } else {
         opponent.x = board.sidelineX;
         opponent.y = board.sidelineY;
+        opponent.miniGameTarget = null;
       }
       opponent.direction = 3;
+    } else {
+      opponent.miniGameTarget = null;
     }
   }
 
@@ -566,6 +570,7 @@ export class CheckersMiniGame {
     };
 
     board.steppingTo = targetTile;
+    opponent.miniGameTarget = targetTile;
     const path = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, targetTile);
     if (path.length) {
       opponent.path = path;

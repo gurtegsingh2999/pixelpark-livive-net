@@ -198,8 +198,28 @@ export class WorldRenderer {
     for (const comp of game.companions) renderables.push({ type: 'char', y: game.interpolated(comp).y, entity: comp });
 
     if (Array.isArray(game.scenery)) {
+      // Find bounding zones of all currently open mini-game boards (expanded by 1 tile margin)
+      const hiddenZones = [];
+      for (const mg of game.miniGames || []) {
+        if (mg.isOpen?.() && mg.activeBoard?.originX !== undefined) {
+          const size = mg.boardSize || 3;
+          hiddenZones.push({
+            minX: mg.activeBoard.originX - 1,
+            maxX: mg.activeBoard.originX + size,
+            minY: mg.activeBoard.originY - 1,
+            maxY: mg.activeBoard.originY + size
+          });
+        }
+      }
+
       for (const item of game.scenery) {
-        renderables.push({ type: 'scenery', y: item.y, entity: item });
+        // Hide scenery item if it falls on the board or within the 1-tile border margin
+        const isHidden = hiddenZones.some(
+          zone => item.x >= zone.minX && item.x <= zone.maxX && item.y >= zone.minY && item.y <= zone.maxY
+        );
+        if (!isHidden) {
+          renderables.push({ type: 'scenery', y: item.y, entity: item });
+        }
       }
     }
 

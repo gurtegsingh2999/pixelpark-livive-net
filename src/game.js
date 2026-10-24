@@ -478,13 +478,51 @@ export class Game {
 
     if (npc.inMiniGame) {
       if (npc.path && npc.path.length) {
-        const next = npc.path.shift();
+        const next = npc.path[0];
         const dx = next.x - npc.x;
         const dy = next.y - npc.y;
         if (Math.abs(dx) + Math.abs(dy) === 1) {
-          this.tryStep(npc, dx, dy, NPC_STEP);
+          if (this.tryStep(npc, dx, dy, NPC_STEP)) {
+            npc.path.shift();
+            npc.blockedWait = 0;
+          } else {
+            // Momentarily blocked by another character (e.g. player):
+            // Fallback: wait briefly, or try lateral evasion around the blocker
+            npc.blockedWait = (npc.blockedWait || 0) + dt;
+            if (npc.blockedWait > 0.4) {
+              // Try lateral step options to navigate around the blocker
+              const lateralOptions = dx !== 0
+                ? [{ dx: 0, dy: 1 }, { dx: 0, dy: -1 }]
+                : [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }];
+
+              let stepped = false;
+              for (const opt of lateralOptions) {
+                if (this.tryStep(npc, opt.dx, opt.dy, NPC_STEP)) {
+                  stepped = true;
+                  npc.blockedWait = 0;
+                  // Repath from new position to final destination tile if steppingTo exists
+                  const target = npc.miniGameTarget || (npc.path.length ? npc.path[npc.path.length - 1] : null);
+                  if (target) {
+                    const repath = findPath(this.terrain, { x: npc.toX, y: npc.toY }, target);
+                    npc.path = repath.length ? repath : [];
+                  }
+                  break;
+                }
+              }
+              if (!stepped && npc.blockedWait > 1.2) {
+                // If persistently blocked after waiting and lateral attempts, repath entirely
+                const target = npc.miniGameTarget || (npc.path.length ? npc.path[npc.path.length - 1] : null);
+                if (target) {
+                  const repath = findPath(this.terrain, { x: npc.x, y: npc.y }, target);
+                  npc.path = repath.length ? repath : [];
+                }
+                npc.blockedWait = 0;
+              }
+            }
+          }
         } else {
           npc.path = [];
+          npc.blockedWait = 0;
         }
       }
       return;

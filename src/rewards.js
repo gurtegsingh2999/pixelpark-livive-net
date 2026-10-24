@@ -12,6 +12,18 @@ export function rollReward(game, gameType, outcome) {
     newCompanion: null
   };
 
+  // Guaranteed companion reward if configured on spec
+  if (spec.rewardCompanion) {
+    const name = COMPANION_NAMES[Math.floor(Math.random() * COMPANION_NAMES.length)];
+    const recipe = createCompanionRecipe();
+    result.newCompanion = {
+      id: `comp-${Math.random().toString(36).slice(2, 9)}`,
+      name,
+      recipe,
+      buddyId: 'player'
+    };
+  }
+
   if (spec.bonusRollChance && Math.random() < spec.bonusRollChance && spec.bonusLootTable) {
     const table = rewardsConfig.lootTables[spec.bonusLootTable] || [];
     const totalWeight = table.reduce((sum, item) => sum + (item.weight || 1), 0);
