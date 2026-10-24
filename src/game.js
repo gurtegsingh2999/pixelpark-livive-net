@@ -565,6 +565,13 @@ export class Game {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
     }
 
+    // Freeze all companions in place during active mini-games (e.g. Tic-Tac-Toe)
+    const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
+    if (isMiniGameActive) {
+      comp.moving = false;
+      return;
+    }
+
     if (comp.moving) {
       comp.elapsed += dt;
       if (comp.elapsed >= comp.duration) {

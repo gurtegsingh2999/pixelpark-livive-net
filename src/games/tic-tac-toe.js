@@ -2,21 +2,14 @@ import { findPath, isWalkable, typeAt } from '../world.js';
 import { recordGameResult } from '../storage.js';
 
 export class TicTacToeMiniGame {
-  constructor({ game, onToast, onGameEnd } = {}) {
+  constructor({ game, onToast, onGameEnd, onAbandonPrompt } = {}) {
     this.game = game;
     this.onToast = onToast || (() => {});
     this.onGameEnd = onGameEnd || (() => {});
+    this.onAbandonPrompt = onAbandonPrompt || (() => {});
     this.activeBoard = null;
-    // activeBoard: {
-    //   originX, originY,
-    //   grid: Array(9).fill(null),
-    //   opponent: npc,
-    //   turn: 'player' | 'opponent',
-    //   winner: null,
-    //   status: 'playing' | 'ended',
-    //   thinkingTimer: 0,
-    //   steppingTo: null
-    // }
+    this.nextStarter = 'player'; // Alternate starting player between rounds
+    this.abandonPromptActive = false;
   }
 
   isOpen() {
@@ -42,16 +35,15 @@ export class TicTacToeMiniGame {
   }
 
   findPlacementSpot(aroundX, aroundY) {
-    // Try offsets around player to find a spot with required margins
+    // Prefer directly to the right of where the player is standing
     const offsets = [
-      { dx: 2, dy: -1 },
+      { dx: 2, dy: -1 }, // directly right-aligned
+      { dx: 3, dy: -1 },
       { dx: -4, dy: -1 },
       { dx: -1, dy: 2 },
       { dx: -1, dy: -4 },
-      { dx: 3, dy: 0 },
-      { dx: -5, dy: 0 },
-      { dx: 2, dy: 2 },
-      { dx: -4, dy: -4 }
+      { dx: 2, dy: 0 },
+      { dx: -5, dy: 0 }
     ];
 
     for (const offset of offsets) {
@@ -74,85 +66,114 @@ export class TicTacToeMiniGame {
       return false;
     }
 
-    // Set up opponent and stage them
+    const starter = this.nextStarter;
+    this.nextStarter = starter === 'player' ? 'opponent' : 'player';
+
+    // Position opponent and companion on sideline: (originX + 3, originY + 1)
+    const sidelineX = spot.originX + 3;
+    const sidelineY = spot.originY + 1;
+
     if (opponent) {
       opponent.inMiniGame = true;
       opponent.path = [];
       opponent.moving = false;
 
-      // Position opponent on the right side of the board in the middle row:
-      // (originX + 3, originY + 1)
-      const sidelineX = spot.originX + 3;
-      const sidelineY = spot.originY + 1;
-      opponent.x = sidelineX;
-      opponent.y = sidelineY;
-      opponent.fromX = sidelineX;
-      opponent.fromY = sidelineY;
-      opponent.toX = sidelineX;
-      opponent.toY = sidelineY;
-      opponent.direction = 3; // Facing left toward the board
+      // Opponent walks or stages to sideline
+      const oppPath = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: sidelineX, y: sidelineY });
+      if (oppPath.length) {
+        opponent.path = oppPath;
+      } else {
+        opponent.x = sidelineX;
+        opponent.y = sidelineY;
+      }
+      opponent.direction = 3; // Facing left toward board
 
-      // Position opponent's companion beside them: (originX + 4, originY + 1)
+      // Companion stands beside opponent: (originX + 4, originY + 1)
       const comp = this.game.getCompanionFor(opponent.id);
       if (comp) {
-        const compX = spot.originX + 4;
-        const compY = spot.originY + 1;
-        comp.x = compX;
-        comp.y = compY;
-        comp.fromX = compX;
-        comp.fromY = compY;
-        comp.toX = compX;
-        comp.toY = compY;
         comp.fetchTarget = null;
+        comp.x = spot.originX + 4;
+        comp.y = sidelineY;
         comp.direction = 3;
       }
+    }
+
+    // Also freeze player's companion beside the player if nearby
+    const playerComp = this.game.getCompanionFor(player.id);
+    if (playerComp) {
+      playerComp.fetchTarget = null;
     }
 
     this.activeBoard = {
       originX: spot.originX,
       originY: spot.originY,
+      sidelineX,
+      sidelineY,
       grid: Array(9).fill(null),
       opponent,
-      turn: 'player',
+      turn: starter,
       winner: null,
-      status: 'playing',
-      thinkingTimer: 0,
-      steppingTo: null
+      status: 'unfolding', // 'unfolding', 'playing', 'refolding', 'ended'
+      foldPhase: 0, // 0 = single center-left tile, 1 = col 0, 2 = col 0 & 1, 3 = full 3x3
+      foldTimer: 0,
+      thinkingTimer: starter === 'opponent' ? 0.8 : 0
     };
 
-    this.onToast(`Unfurled Tic-Tac-Toe! ${opponent?.name || 'Opponent'} is ready on the sideline. Step on a square and press Enter to mark X.`);
+    this.abandonPromptActive = false;
+    this.onToast(`Unfurling Tic-Tac-Toe board on the ground...`);
     return true;
   }
 
   resetRound() {
     if (!this.activeBoard) return;
+    const starter = this.nextStarter;
+    this.nextStarter = starter === 'player' ? 'opponent' : 'player';
+
     this.activeBoard.grid = Array(9).fill(null);
-    this.activeBoard.turn = 'player';
+    this.activeBoard.turn = starter;
     this.activeBoard.winner = null;
     this.activeBoard.status = 'playing';
-    this.activeBoard.thinkingTimer = 0;
-    this.activeBoard.steppingTo = null;
+    this.activeBoard.thinkingTimer = starter === 'opponent' ? 0.4 + Math.random() * 0.4 : 0;
+    this.walkOpponentToSideline();
 
-    // Return opponent to sideline if needed
-    const opponent = this.activeBoard.opponent;
-    if (opponent) {
-      const sidelineX = this.activeBoard.originX + 3;
-      const sidelineY = this.activeBoard.originY + 1;
-      opponent.x = sidelineX;
-      opponent.y = sidelineY;
+    const starterText = starter === 'player' ? 'You start!' : `${this.activeBoard.opponent?.name || 'Opponent'} starts!`;
+    this.onToast(`New round! ${starterText}`);
+  }
+
+  walkOpponentToSideline() {
+    const board = this.activeBoard;
+    if (!board || !board.opponent) return;
+    const opponent = board.opponent;
+    if (opponent.x !== board.sidelineX || opponent.y !== board.sidelineY) {
+      const path = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: board.sidelineX, y: board.sidelineY });
+      if (path.length) {
+        opponent.path = path;
+      } else {
+        opponent.x = board.sidelineX;
+        opponent.y = board.sidelineY;
+      }
       opponent.direction = 3;
     }
+  }
 
-    this.onToast('New round! Step onto a square and press Enter to mark X.');
+  startRefolding(onComplete) {
+    if (!this.activeBoard) return;
+    this.activeBoard.status = 'refolding';
+    this.activeBoard.foldPhase = 3;
+    this.activeBoard.foldTimer = 0;
+    this.activeBoard.onRefoldComplete = onComplete;
+    this.walkOpponentToSideline();
   }
 
   packUpBoard() {
     if (!this.activeBoard) return;
-    if (this.activeBoard.opponent) {
-      this.activeBoard.opponent.inMiniGame = false;
-    }
-    this.activeBoard = null;
-    this.onToast('Packed up the Tic-Tac-Toe board.');
+    this.startRefolding(() => {
+      if (this.activeBoard?.opponent) {
+        this.activeBoard.opponent.inMiniGame = false;
+      }
+      this.activeBoard = null;
+      this.onToast('Packed up the Tic-Tac-Toe board into your bag.');
+    });
   }
 
   cellAtTile(x, y) {
@@ -170,7 +191,7 @@ export class TicTacToeMiniGame {
     if (!this.activeBoard || this.activeBoard.status !== 'playing') return false;
     const isPlayer = character === this.game.player;
     if (isPlayer && this.activeBoard.turn !== 'player') {
-      this.onToast(`It's ${this.activeBoard.opponent?.name || 'opponent'}'s turn to think.`);
+      this.onToast(`It's ${this.activeBoard.opponent?.name || 'opponent'}'s turn.`);
       return false;
     }
 
@@ -192,6 +213,13 @@ export class TicTacToeMiniGame {
 
     // Trigger cheer for the character's buddy
     this.game.triggerCheer(character.id, 1.2);
+
+    // If opponent made their move, walk them back to their sideline standby position
+    if (!isPlayer) {
+      setTimeout(() => {
+        if (this.activeBoard) this.walkOpponentToSideline();
+      }, 300);
+    }
 
     const winner = this.checkWinner();
     if (winner) {
@@ -220,7 +248,7 @@ export class TicTacToeMiniGame {
         this.game.triggerCheer(winnerId, 2.5);
       }
 
-      // Notify callback to trigger "Want to play again?" dialogue
+      // Notify callback to trigger rematch dialogue
       setTimeout(() => {
         if (this.activeBoard && this.activeBoard.status === 'ended') {
           this.onGameEnd(winner, opponent);
@@ -233,7 +261,6 @@ export class TicTacToeMiniGame {
     // Switch turns
     if (isPlayer) {
       this.activeBoard.turn = 'opponent';
-      // Thinking delay between 0.2 and 0.8 seconds
       this.activeBoard.thinkingTimer = 0.2 + Math.random() * 0.6;
     } else {
       this.activeBoard.turn = 'player';
@@ -244,17 +271,75 @@ export class TicTacToeMiniGame {
   }
 
   update(dt) {
-    if (!this.activeBoard || this.activeBoard.status !== 'playing') return;
+    if (!this.activeBoard) return;
+    const board = this.activeBoard;
+
+    // Unfolding animation phases
+    if (board.status === 'unfolding') {
+      board.foldTimer += dt;
+      if (board.foldTimer >= 0.28) {
+        board.foldTimer = 0;
+        board.foldPhase++;
+        if (board.foldPhase >= 3) {
+          board.status = 'playing';
+          this.onToast(board.turn === 'player'
+            ? 'Board is ready! Step onto a square and press Enter to mark X.'
+            : `${board.opponent?.name || 'Opponent'} is contemplating the first move...`);
+        }
+      }
+      return;
+    }
+
+    // Refolding animation phases
+    if (board.status === 'refolding') {
+      board.foldTimer += dt;
+      if (board.foldTimer >= 0.22) {
+        board.foldTimer = 0;
+        board.foldPhase--;
+        if (board.foldPhase < 0) {
+          const cb = board.onRefoldComplete;
+          board.onRefoldComplete = null;
+          cb?.();
+        }
+      }
+      return;
+    }
+
+    // Distance check: If player wanders more than 2 spaces away from board boundary
+    if (board.status === 'playing' && this.game.player && !this.abandonPromptActive) {
+      const p = this.game.player;
+      const minX = board.originX;
+      const maxX = board.originX + 2;
+      const minY = board.originY;
+      const maxY = board.originY + 2;
+
+      const distLeft = minX - p.x;
+      const distRight = p.x - maxX;
+      const distTop = minY - p.y;
+      const distBottom = p.y - maxY;
+      const dist = Math.max(0, distLeft, distRight, distTop, distBottom);
+
+      if (dist > 2) {
+        this.abandonPromptActive = true;
+        this.onAbandonPrompt(() => {
+          // Confirm abandon
+          this.abandonPromptActive = false;
+          this.packUpBoard();
+        }, () => {
+          // Cancel abandon, stay in game
+          this.abandonPromptActive = false;
+        });
+      }
+    }
 
     // Opponent thinking and walking flow
-    if (this.activeBoard.turn === 'opponent') {
-      const opponent = this.activeBoard.opponent;
+    if (board.status === 'playing' && board.turn === 'opponent') {
+      const opponent = board.opponent;
       if (!opponent) return;
 
-      if (this.activeBoard.thinkingTimer > 0) {
-        this.activeBoard.thinkingTimer -= dt;
-        if (this.activeBoard.thinkingTimer <= 0) {
-          // Finished contemplating: select tile and walk
+      if (board.thinkingTimer > 0) {
+        board.thinkingTimer -= dt;
+        if (board.thinkingTimer <= 0) {
           this.executeOpponentMove();
         }
       }
@@ -275,7 +360,7 @@ export class TicTacToeMiniGame {
 
     if (!available.length) return;
 
-    // AI logic: center first, or winning move, or random
+    // AI logic: center first, or random
     const chosenIndex = available.includes(4) && Math.random() > 0.3
       ? 4
       : available[Math.floor(Math.random() * available.length)];
@@ -289,7 +374,6 @@ export class TicTacToeMiniGame {
     const path = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, { x: targetX, y: targetY });
     if (path.length) {
       opponent.path = path;
-      // Monitor arrival via polling interval
       const checkArrival = setInterval(() => {
         if (!this.activeBoard || this.activeBoard.turn !== 'opponent') {
           clearInterval(checkArrival);
@@ -301,7 +385,6 @@ export class TicTacToeMiniGame {
         }
       }, 50);
     } else {
-      // Direct step fallback
       opponent.x = targetX;
       opponent.y = targetY;
       this.handleAction(opponent);
@@ -331,71 +414,112 @@ export class TicTacToeMiniGame {
 
   render(ctx, camera) {
     if (!this.activeBoard) return;
-    const { originX, originY, grid } = this.activeBoard;
+    const { originX, originY, grid, status, foldPhase } = this.activeBoard;
     const TILE = 48;
-    const boardSize = TILE * 3;
     const screenX = originX * TILE - camera.x;
     const screenY = originY * TILE - camera.y;
 
     ctx.save();
-    // Canvas mat / ground blanket
+
+    // Determine current rendering rect based on folding phase:
+    // Phase 0: center tile (col 0, row 1)
+    // Phase 1: entire first column (col 0, rows 0..2)
+    // Phase 2: first two columns (cols 0..1, rows 0..2)
+    // Phase 3: full 3x3 board
+    let drawX = screenX;
+    let drawY = screenY;
+    let drawW = TILE * 3;
+    let drawH = TILE * 3;
+
+    if (status === 'unfolding' || status === 'refolding') {
+      if (foldPhase === 0) {
+        drawX = screenX;
+        drawY = screenY + TILE;
+        drawW = TILE;
+        drawH = TILE;
+      } else if (foldPhase === 1) {
+        drawX = screenX;
+        drawY = screenY;
+        drawW = TILE;
+        drawH = TILE * 3;
+      } else if (foldPhase === 2) {
+        drawX = screenX;
+        drawY = screenY;
+        drawW = TILE * 2;
+        drawH = TILE * 3;
+      }
+    }
+
+    // Canvas ground mat
     ctx.fillStyle = 'rgba(245, 238, 220, 0.94)';
-    ctx.fillRect(screenX - 4, screenY - 4, boardSize + 8, boardSize + 8);
+    ctx.fillRect(drawX - 4, drawY - 4, drawW + 8, drawH + 8);
 
     ctx.strokeStyle = 'rgba(120, 80, 50, 0.45)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(screenX - 4, screenY - 4, boardSize + 8, boardSize + 8);
+    ctx.strokeRect(drawX - 4, drawY - 4, drawW + 8, drawH + 8);
 
-    // Grid lines
-    ctx.strokeStyle = 'rgba(60, 40, 20, 0.7)';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
+    // Only render grid lines and pieces if fully or partially unfolded
+    if (foldPhase >= 1) {
+      ctx.strokeStyle = 'rgba(60, 40, 20, 0.7)';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
 
-    for (let i = 1; i < 3; i++) {
-      // Vertical
+      // Internal lines
+      if (foldPhase >= 2) {
+        ctx.beginPath();
+        ctx.moveTo(screenX + TILE, screenY);
+        ctx.lineTo(screenX + TILE, screenY + drawH);
+        ctx.stroke();
+      }
+      if (foldPhase >= 3) {
+        ctx.beginPath();
+        ctx.moveTo(screenX + TILE * 2, screenY);
+        ctx.lineTo(screenX + TILE * 2, screenY + drawH);
+        ctx.stroke();
+      }
+
       ctx.beginPath();
-      ctx.moveTo(screenX + i * TILE, screenY);
-      ctx.lineTo(screenX + i * TILE, screenY + boardSize);
-      ctx.stroke();
-
-      // Horizontal
-      ctx.beginPath();
-      ctx.moveTo(screenX, screenY + i * TILE);
-      ctx.lineTo(screenX + boardSize, screenY + i * TILE);
+      ctx.moveTo(drawX, screenY + TILE);
+      ctx.lineTo(drawX + drawW, screenY + TILE);
+      ctx.moveTo(drawX, screenY + TILE * 2);
+      ctx.lineTo(drawX + drawW, screenY + TILE * 2);
       ctx.stroke();
     }
 
-    // Render pieces
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) {
-        const piece = grid[r * 3 + c];
-        if (!piece) continue;
+    // Render pieces if in playing or ended state
+    if (status === 'playing' || status === 'ended') {
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const piece = grid[r * 3 + c];
+          if (!piece) continue;
 
-        const cx = screenX + (c + 0.5) * TILE;
-        const cy = screenY + (r + 0.5) * TILE;
+          const cx = screenX + (c + 0.5) * TILE;
+          const cy = screenY + (r + 0.5) * TILE;
 
-        if (piece === 'X') {
-          ctx.strokeStyle = '#e74c3c';
-          ctx.lineWidth = 6;
-          const s = 14;
-          ctx.beginPath();
-          ctx.moveTo(cx - s, cy - s);
-          ctx.lineTo(cx + s, cy + s);
-          ctx.moveTo(cx + s, cy - s);
-          ctx.lineTo(cx - s, cy + s);
-          ctx.stroke();
-        } else if (piece === 'O') {
-          ctx.strokeStyle = '#2980b9';
-          ctx.lineWidth = 6;
-          ctx.beginPath();
-          ctx.arc(cx, cy, 14, 0, Math.PI * 2);
-          ctx.stroke();
+          if (piece === 'X') {
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 6;
+            const s = 14;
+            ctx.beginPath();
+            ctx.moveTo(cx - s, cy - s);
+            ctx.lineTo(cx + s, cy + s);
+            ctx.moveTo(cx + s, cy - s);
+            ctx.lineTo(cx - s, cy + s);
+            ctx.stroke();
+          } else if (piece === 'O') {
+            ctx.strokeStyle = '#2980b9';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         }
       }
     }
 
-    // Status indicator banner on board if ended
-    if (this.activeBoard.status === 'ended') {
+    // Status banner if ended
+    if (status === 'ended') {
+      const boardSize = TILE * 3;
       ctx.fillStyle = 'rgba(20, 30, 22, 0.85)';
       ctx.fillRect(screenX, screenY + boardSize / 2 - 20, boardSize, 40);
       ctx.fillStyle = '#edf4e9';

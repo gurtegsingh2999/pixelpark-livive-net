@@ -600,6 +600,29 @@ function handleActionKey(character) {
   }
 }
 
+function onAbandonPrompt(onConfirm, onCancel) {
+  const opponent = tttGame?.activeBoard?.opponent;
+  const oppName = opponent?.name || 'Your friend';
+  dialogue.openCustomBeat(opponent, `${oppName}: Are you walking away? Abandon the Tic-Tac-Toe game and pack up?`, [
+    {
+      label: 'Abandon & pack up',
+      className: 'danger',
+      onClick: () => {
+        dialogue.close();
+        onConfirm();
+      }
+    },
+    {
+      label: 'Keep playing',
+      className: 'primary',
+      onClick: () => {
+        dialogue.close();
+        onCancel();
+      }
+    }
+  ]);
+}
+
 function ensureGame() {
   if (!game) {
     dialogue = new DialogueManager({
@@ -618,7 +641,12 @@ function ensureGame() {
     });
 
     fetchGame = new FetchMiniGame({ game, onToast: showToast });
-    tttGame = new TicTacToeMiniGame({ game, onToast: showToast, onGameEnd: onTTTGameEnd });
+    tttGame = new TicTacToeMiniGame({
+      game,
+      onToast: showToast,
+      onGameEnd: onTTTGameEnd,
+      onAbandonPrompt
+    });
     game.registerMiniGame(fetchGame);
     game.registerMiniGame(tttGame);
   }
