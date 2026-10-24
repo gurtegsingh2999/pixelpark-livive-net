@@ -217,3 +217,41 @@ test('mini-game boards evacuate bystander NPCs and companions upon unfurling and
   bystanderNpc.y = 11;
   assert.equal(ttt.blocksStep(bystanderNpc, 10, 10), true);
 });
+
+test('bystander companions are not frozen during active mini-games and can follow their buddy', () => {
+  const fakeTerrain = Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'grass'));
+  const wanderingNpc = { id: 'npc-wanderer', x: 20, y: 20, moving: false };
+  const bystanderComp = { id: 'comp-bystander', buddyId: 'npc-wanderer', x: 13, y: 10, moving: false, path: [] };
+  const playerComp = { id: 'comp-player', buddyId: 'player', x: 9, y: 12, stagedDestination: { x: 9, y: 12 }, moving: false, path: [] };
+
+  const fakeGame = {
+    terrain: fakeTerrain,
+    player: { id: 'player', x: 9, y: 11 },
+    npcs: [wanderingNpc, { id: 'opp', x: 13, y: 11 }],
+    companions: [bystanderComp, playerComp],
+    miniGames: [{
+      isOpen: () => true,
+      activeBoard: { originX: 10, originY: 10, opponent: { id: 'opp' } },
+      boardSize: 3,
+      isTileOnBoard: (x, y) => x >= 10 && x <= 12 && y >= 10 && y <= 12
+    }],
+    getCompanionsFor: (id) => [bystanderComp, playerComp].filter(c => c.buddyId === id),
+    allOtherCharacters: () => []
+  };
+
+  fakeGame.isParticipantCompanion = (comp) => {
+    return comp.buddyId === 'player' || comp.buddyId === 'opp';
+  };
+  fakeGame.isCharacterOnMiniGameBoard = (char) => {
+    return char.x >= 10 && char.x <= 12 && char.y >= 10 && char.y <= 12;
+  };
+  fakeGame.getMiniGameBlockedTiles = () => new Set();
+  fakeGame.tryStep = (char, dx, dy) => {
+    char.x += dx;
+    char.y += dy;
+    return true;
+  };
+
+  assert.equal(fakeGame.isParticipantCompanion(playerComp), true);
+  assert.equal(fakeGame.isParticipantCompanion(bystanderComp), false);
+});

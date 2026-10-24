@@ -585,6 +585,19 @@ export class Game {
     return false;
   }
 
+  isParticipantCompanion(comp) {
+    if (!comp) return false;
+    for (const game of this.miniGames) {
+      if (game.isOpen?.()) {
+        const opponentId = game.activeBoard?.opponent?.id;
+        if (comp.buddyId === 'player' || (opponentId && comp.buddyId === opponentId)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   updateCompanion(comp, dt) {
     if (comp.cheerTimer > 0) {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
@@ -601,12 +614,11 @@ export class Game {
       return;
     }
 
-    // During active mini-games:
-    // 1. If companion has a staged spectator destination, keep them parked there (or continue moving to it)
-    // 2. Otherwise during active mini-games, companions do NOT follow their buddy around the board!
-    // 3. If trapped on the board without a staged destination, allow them to flee/walk off the board
-    const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
-    if (isMiniGameActive) {
+    // Handle active mini-game participant companions (player and opponent companions):
+    // 1. Keep them parked at their staged spectator position (or move toward it)
+    // 2. Prevent them from following their buddy around onto the board while playing
+    const isParticipant = this.isParticipantCompanion(comp);
+    if (isParticipant) {
       if (comp.stagedDestination) {
         // Already at staged spectator spot: stay still facing the board
         if (comp.x === comp.stagedDestination.x && comp.y === comp.stagedDestination.y) {
@@ -639,14 +651,25 @@ export class Game {
           return;
         }
       }
-
-      // If trapped on the board without a staged destination, let them path out
+      // If a participant companion is on the board without a staged destination, let them walk off
       const isTrappedOnBoard = this.isCharacterOnMiniGameBoard(comp);
       if (!isTrappedOnBoard) {
-        // Outside the board: stay stationary during mini-game
         comp.moving = false;
         return;
       }
+    }
+
+    // Bystander companions (and participant companions moving off the board):
+    // If they have an active evacuation path to flee the board, continue following it
+    if (comp.path && comp.path.length) {
+      const next = comp.path.shift();
+      const dx = next.x - comp.x;
+      const dy = next.y - comp.y;
+      if (Math.abs(dx) + Math.abs(dy) === 1) {
+        this.tryStep(comp, dx, dy, COMPANION_STEP);
+        return;
+      }
+      comp.path = [];
     }
 
     // Determine target location: either fetchTarget or trailing its buddy
@@ -674,7 +697,7 @@ export class Game {
       target = { x: leader.x, y: leader.y };
     }
 
-    // Path or step toward target
+    // Path or step toward target (bypassing active mini-game board tiles)
     const dx = target.x - comp.x;
     const dy = target.y - comp.y;
     const stepX = dx === 0 ? 0 : (dx > 0 ? 1 : -1);
@@ -686,6 +709,19 @@ export class Game {
     } else {
       if (stepY !== 0 && this.tryStep(comp, 0, stepY, COMPANION_STEP)) return;
       if (stepX !== 0 && this.tryStep(comp, stepX, 0, COMPANION_STEP)) return;
+    }
+
+    // If direct step failed (e.g. board or obstacle in the way), pathfind around the board
+    const blocked = this.getMiniGameBlockedTiles();
+    const repath = findPath(this.terrain, { x: comp.x, y: comp.y }, target, blocked);
+    if (repath.length) {
+      const next = repath.shift();
+      const pdx = next.x - comp.x;
+      const pdy = next.y - comp.y;
+      if (Math.abs(pdx) + Math.abs(pdy) === 1) {
+        this.tryStep(comp, pdx, pdy, COMPANION_STEP);
+        comp.path = repath;
+      }
     }
   }
 
