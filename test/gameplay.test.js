@@ -103,3 +103,18 @@ test('canCollide enforces asymmetric companion collision exclusion rule', () => 
 test('the game module loads', () => {
   assert.equal(typeof Game, 'function');
 });
+
+test('addNpc properly tracks companion with buddy', () => {
+  const game = new Game();
+  game.terrain = Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'g'));
+  game.player = { x: 30, y: 30 };
+  const rawNpc = { id: 'npc-test', name: 'Sam', recipe: { style: 'voxel-art' } };
+  const rawComp = { id: 'comp-test', name: 'Rusty', buddyId: 'npc-test', recipe: { style: 'dog' } };
+
+  const added = game.addNpc(rawNpc, rawComp);
+  assert.equal(added.id, 'npc-test');
+  assert.equal(game.npcs.length, 1);
+  assert.equal(game.companions.length, 1);
+  assert.equal(game.companions[0].id, 'comp-test');
+  assert.equal(game.companions[0].buddyId, 'npc-test');
+});

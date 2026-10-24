@@ -334,6 +334,15 @@ export class PanelsUI {
     this.getGame()?.select(null);
   }
 
+  isAnyPanelOpen() {
+    return Boolean(
+      ($('inventory-panel') && !$('inventory-panel').hidden) ||
+      ($('stats-panel') && !$('stats-panel').hidden) ||
+      ($('friends-panel') && !$('friends-panel').hidden) ||
+      ($('npc-card') && !$('npc-card').hidden)
+    );
+  }
+
   closeAllPanels() {
     this.closeCard();
     this.closeFriendsPanel();

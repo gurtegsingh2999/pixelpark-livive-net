@@ -97,11 +97,11 @@ export function makeTileTextures() {
 }
 
 export class WorldRenderer {
-  constructor({ canvas, minimap }) {
+  constructor({ canvas, minimap } = {}) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas?.getContext?.('2d') || null;
     this.minimap = minimap;
-    this.mctx = minimap?.getContext('2d');
+    this.mctx = minimap?.getContext?.('2d') || null;
     this.tileTextures = null;
     this.minimapBase = null;
   }

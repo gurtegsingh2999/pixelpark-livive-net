@@ -175,10 +175,115 @@ function onTTTGameEnd(winner, opponent) {
   ]);
 }
 
+function openPlayerMenu() {
+  if (!game?.player) return;
+  const player = game.player;
+
+  const choices = [
+    {
+      label: '🎒 Backpack',
+      className: 'primary',
+      onClick: () => {
+        dialogue.close();
+        panels?.toggleInventoryPanel();
+      }
+    },
+    {
+      label: '🐾 Companions',
+      className: 'pill',
+      onClick: () => {
+        dialogue.close();
+        // Inspect player companion if present, otherwise show companion info
+        const playerComp = game.companions?.find(c => c.buddyId === 'player');
+        if (playerComp) {
+          panels?.showCard(playerComp);
+        } else {
+          showToast('No companions following you right now.');
+        }
+      }
+    },
+    {
+      label: '👥 Friends',
+      className: 'pill',
+      onClick: () => {
+        dialogue.close();
+        panels?.toggleFriendsPanel();
+      }
+    },
+    {
+      label: '🏆 Stats',
+      className: 'pill',
+      onClick: () => {
+        dialogue.close();
+        panels?.toggleStatsPanel();
+      }
+    },
+    {
+      label: '⚙️ Debug',
+      className: 'pill',
+      onClick: () => {
+        openDebugMenu();
+      }
+    },
+    {
+      label: 'Close',
+      className: 'pill quiet',
+      onClick: () => dialogue.close()
+    }
+  ];
+
+  dialogue.openCustomBeat(player, 'What would you like to do?', choices);
+}
+
+function openDebugMenu() {
+  if (!game?.player) return;
+  const player = game.player;
+
+  const choices = [
+    {
+      label: '+ Neighbour',
+      className: 'primary',
+      onClick: () => {
+        addNeighbour();
+        // Re-display or update dialogue
+        dialogue.close();
+      }
+    },
+    {
+      label: 'New Park',
+      className: 'danger',
+      onClick: () => {
+        dialogue.close();
+        if (!window.confirm('Start a new park? Your current park and neighbours will be replaced.')) return;
+        clearSave();
+        entered = false;
+        openWizard({ fresh: true });
+      }
+    },
+    {
+      label: '← Back',
+      className: 'pill quiet',
+      onClick: () => {
+        openPlayerMenu();
+      }
+    }
+  ];
+
+  dialogue.openCustomBeat(player, 'Debug Options', choices);
+}
+
 function handleActionKey(character) {
   if (tttGame?.isOpen()) {
     tttGame.handleAction(character);
+    return;
   }
+  if (dialogue?.isOpen()) {
+    return;
+  }
+  if (panels?.isAnyPanelOpen?.()) {
+    return;
+  }
+  openPlayerMenu();
 }
 
 function onAbandonPrompt(onConfirm, onCancel) {
@@ -534,6 +639,7 @@ function addNeighbour() {
     return;
   }
   const npc = makeLiveNpc();
+  preloadAvatars([npc.recipe, npc.companion?.recipe]);
   game.addNpc(npc, npc.companion);
   panels?.updateFriendsUI();
   saveNow();
