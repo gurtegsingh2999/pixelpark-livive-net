@@ -720,36 +720,92 @@ function closeCard() {
   game?.select(null);
 }
 
-function scatterNpcs(component, spawn, count) {
-  const cells = component.filter(cell => !(cell.x === spawn.x && cell.y === spawn.y));
-  for (let i = cells.length - 1; i > 0; i--) {
+function scatterNpcs(terrain, component, spawn, count) {
+  // Candidate walkable tiles strictly validated against isWalkable terrain
+  const walkableCells = (component && component.length ? component : [])
+    .filter(cell => isWalkable(terrain[cell.y]?.[cell.x]) && !(cell.x === spawn.x && cell.y === spawn.y));
+
+  // If component doesn't supply enough walkable tiles, scan the entire grid
+  if (walkableCells.length < count * 2) {
+    walkableCells.length = 0;
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        if (isWalkable(terrain[y]?.[x]) && !(x === spawn.x && y === spawn.y)) {
+          walkableCells.push({ x, y });
+        }
+      }
+    }
+  }
+
+  // Shuffle candidate walkable cells thoroughly
+  for (let i = walkableCells.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [cells[i], cells[j]] = [cells[j], cells[i]];
+    [walkableCells[i], walkableCells[j]] = [walkableCells[j], walkableCells[i]];
   }
 
   const chosen = [];
   const distanceFromSpawn = cell => Math.abs(cell.x - spawn.x) + Math.abs(cell.y - spawn.y);
-  const near = cells.filter(cell => distanceFromSpawn(cell) >= 3 && distanceFromSpawn(cell) <= 14);
-  const far = cells.filter(cell => distanceFromSpawn(cell) > 14);
-  const pool = [...near, ...far, ...cells];
 
+  // Group by zone to ensure widespread dispersal across the whole park:
+  // Near (3-12 tiles), Mid (13-25 tiles), Far (> 25 tiles)
+  const near = walkableCells.filter(cell => distanceFromSpawn(cell) >= 3 && distanceFromSpawn(cell) <= 12);
+  const mid = walkableCells.filter(cell => distanceFromSpawn(cell) > 12 && distanceFromSpawn(cell) <= 25);
+  const far = walkableCells.filter(cell => distanceFromSpawn(cell) > 25);
+
+  // Interleave far, mid, and near so NPCs are evenly scattered across the map
+  const pool = [];
+  const maxLen = Math.max(near.length, mid.length, far.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (far[i]) pool.push(far[i]);
+    if (mid[i]) pool.push(mid[i]);
+    if (near[i]) pool.push(near[i]);
+  }
+  pool.push(...walkableCells);
+
+  // First pass: Spread them out with at least 3 tiles distance between each other
   for (const cell of pool) {
     if (chosen.length >= count) break;
-    if (chosen.every(other => Math.abs(other.x - cell.x) + Math.abs(other.y - cell.y) >= 2)) {
+    if (isWalkable(terrain[cell.y]?.[cell.x]) &&
+        chosen.every(other => Math.abs(other.x - cell.x) + Math.abs(other.y - cell.y) >= 3)) {
       chosen.push(cell);
     }
   }
+
+  // Second pass: Relax spacing to 2 tiles if needed
   for (const cell of pool) {
     if (chosen.length >= count) break;
-    if (!chosen.some(other => other.x === cell.x && other.y === cell.y)) chosen.push(cell);
+    if (isWalkable(terrain[cell.y]?.[cell.x]) &&
+        chosen.every(other => Math.abs(other.x - cell.x) + Math.abs(other.y - cell.y) >= 2)) {
+      chosen.push(cell);
+    }
   }
+
+  // Final pass: Fill remaining with open unique walkable tiles
+  for (const cell of pool) {
+    if (chosen.length >= count) break;
+    if (isWalkable(terrain[cell.y]?.[cell.x]) &&
+        !chosen.some(other => other.x === cell.x && other.y === cell.y)) {
+      chosen.push(cell);
+    }
+  }
+
   return chosen;
 }
 
 function buildLiveNpcs() {
-  const spots = scatterNpcs(draft.world.component, draft.world.spawn, draft.npcs.length);
+  const spots = scatterNpcs(draft.world.grid, draft.world.component, draft.world.spawn, draft.npcs.length);
+  const occupied = new Set([`${draft.world.spawn.x},${draft.world.spawn.y}`]);
+
   return draft.npcs.map((npc, index) => {
-    const spot = spots[index] || findOpenTile(draft.world.grid, draft.world.spawn);
+    let spot = spots[index];
+
+    // Verification & Automatic Reshuffle:
+    // If spot is missing, non-walkable, water, or already taken, automatically relocate
+    if (!spot || !isWalkable(draft.world.grid[spot.y]?.[spot.x]) || occupied.has(`${spot.x},${spot.y}`)) {
+      spot = findOpenTile(draft.world.grid, draft.world.spawn, occupied, 4);
+    }
+    occupied.add(`${spot.x},${spot.y}`);
+
     return {
       id: npc.id,
       name: npc.name,
