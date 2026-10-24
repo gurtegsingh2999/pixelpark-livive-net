@@ -8,7 +8,7 @@ import {
 } from './world.js';
 import { occupantAtTile, reservationAtTile } from './characters.js';
 import { directionForStep } from './facing.js';
-import { WorldRenderer, TILE } from './renderer.js';
+import { WorldRenderer, TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
 
 export { TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
 

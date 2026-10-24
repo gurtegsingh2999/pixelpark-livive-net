@@ -258,6 +258,7 @@ export class WorldRenderer {
     }
 
     // Alternate walk frames for pets and creatures
+    let targetFrame = 'default';
     if (isCompanion && character.cheerTimer > 0 && profile.frames?.includes('cheer')) {
       targetFrame = 'cheer';
     } else if (character.moving && is3DModel) {
