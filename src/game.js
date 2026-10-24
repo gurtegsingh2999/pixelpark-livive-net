@@ -601,18 +601,19 @@ export class Game {
       return;
     }
 
-    // During active mini-games, companions only move if they are navigating to their staged spectator position,
-    // OR if they are currently standing on the board and need to escape/walk off
+    // During active mini-games:
+    // 1. If companion has a staged spectator destination, keep them parked there (or continue moving to it)
+    // 2. Otherwise during active mini-games, companions do NOT follow their buddy around the board!
+    // 3. If trapped on the board without a staged destination, allow them to flee/walk off the board
     const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
-    const isTrappedOnBoard = isMiniGameActive && this.isCharacterOnMiniGameBoard(comp);
-
-    if (isMiniGameActive && !isTrappedOnBoard) {
+    if (isMiniGameActive) {
       if (comp.stagedDestination) {
+        // Already at staged spectator spot: stay still facing the board
         if (comp.x === comp.stagedDestination.x && comp.y === comp.stagedDestination.y) {
-          comp.stagedDestination = null;
-          comp.path = [];
+          comp.moving = false;
           return;
         }
+
         if (comp.path && comp.path.length) {
           const next = comp.path.shift();
           const dx = next.x - comp.x;
@@ -633,12 +634,19 @@ export class Game {
           } else {
             comp.x = comp.stagedDestination.x;
             comp.y = comp.stagedDestination.y;
-            comp.stagedDestination = null;
+            comp.path = [];
           }
+          return;
         }
       }
-      comp.moving = false;
-      return;
+
+      // If trapped on the board without a staged destination, let them path out
+      const isTrappedOnBoard = this.isCharacterOnMiniGameBoard(comp);
+      if (!isTrappedOnBoard) {
+        // Outside the board: stay stationary during mini-game
+        comp.moving = false;
+        return;
+      }
     }
 
     // Determine target location: either fetchTarget or trailing its buddy

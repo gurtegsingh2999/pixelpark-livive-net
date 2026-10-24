@@ -305,6 +305,10 @@ export class TicTacToeMiniGame {
       if (this.activeBoard?.opponent) {
         this.activeBoard.opponent.inMiniGame = false;
       }
+      // Clear staged spectator destination on companions so they resume following
+      for (const comp of this.game.companions || []) {
+        comp.stagedDestination = null;
+      }
       this.activeBoard = null;
       this.onToast('Packed up the Tic-Tac-Toe board into your bag.');
     });
