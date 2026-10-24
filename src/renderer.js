@@ -106,6 +106,8 @@ export class WorldRenderer {
     this.tileTextures = null;
     this.minimapBase = null;
     this.sceneryImages = new Map();
+    this.sceneryOpacity = new Map(); // id -> current rendered opacity (0 to 1)
+    this.lastFrameTime = performance.now();
     this.initScenery();
   }
 
@@ -198,6 +200,12 @@ export class WorldRenderer {
     for (const comp of game.companions) renderables.push({ type: 'char', y: game.interpolated(comp).y, entity: comp });
 
     if (Array.isArray(game.scenery)) {
+      // Delta time calculation for smooth scenery fade tweening
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const dt = Math.min((now - (this.lastFrameTime || now)) / 1000, 0.1);
+      this.lastFrameTime = now;
+      const FADE_SPEED = 3.5; // ~0.28s to fade in/out completely
+
       // Find bounding zones of all currently open mini-game boards (expanded by 1 tile margin)
       const hiddenZones = [];
       for (const mg of game.miniGames || []) {
@@ -213,12 +221,25 @@ export class WorldRenderer {
       }
 
       for (const item of game.scenery) {
-        // Hide scenery item if it falls on the board or within the 1-tile border margin
+        // Target opacity: 0 if on or adjacent to active board, 1 if clear
         const isHidden = hiddenZones.some(
           zone => item.x >= zone.minX && item.x <= zone.maxX && item.y >= zone.minY && item.y <= zone.maxY
         );
-        if (!isHidden) {
-          renderables.push({ type: 'scenery', y: item.y, entity: item });
+        const targetOpacity = isHidden ? 0 : 1;
+        const currentOpacity = this.sceneryOpacity.has(item.id) ? this.sceneryOpacity.get(item.id) : 1;
+
+        // Smooth tween toward target opacity
+        let newOpacity = currentOpacity;
+        if (currentOpacity < targetOpacity) {
+          newOpacity = Math.min(targetOpacity, currentOpacity + FADE_SPEED * dt);
+        } else if (currentOpacity > targetOpacity) {
+          newOpacity = Math.max(targetOpacity, currentOpacity - FADE_SPEED * dt);
+        }
+        this.sceneryOpacity.set(item.id, newOpacity);
+
+        // Render if opacity > 0
+        if (newOpacity > 0.01) {
+          renderables.push({ type: 'scenery', y: item.y, entity: item, opacity: newOpacity });
         }
       }
     }
@@ -229,7 +250,7 @@ export class WorldRenderer {
       if (item.type === 'char') {
         this.drawCharacter(game, item.entity);
       } else {
-        this.drawSceneryItem(ctx, item.entity);
+        this.drawSceneryItem(ctx, item.entity, item.opacity);
       }
     }
 
@@ -240,7 +261,7 @@ export class WorldRenderer {
     this.drawMinimap(game);
   }
 
-  drawSceneryItem(ctx, item) {
+  drawSceneryItem(ctx, item, opacity = 1) {
     const img = this.sceneryImages.get(item.type);
     if (!img || !img.complete) return;
 
@@ -283,8 +304,14 @@ export class WorldRenderer {
     };
     const bottomTrim = (BOTTOM_OFFSETS[item.type] || 0) * height;
 
-    // Draw scenery image cleanly without artificial oval shadow
-    ctx.drawImage(img, footX - width / 2, footY - height + bottomTrim, width, height);
+    if (opacity < 0.999) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, opacity));
+      ctx.drawImage(img, footX - width / 2, footY - height + bottomTrim, width, height);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, footX - width / 2, footY - height + bottomTrim, width, height);
+    }
   }
 
   drawCharacter(game, character) {
