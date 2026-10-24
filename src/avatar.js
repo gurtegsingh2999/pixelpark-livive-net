@@ -132,16 +132,21 @@ export function avatarSvg(recipe, { frame = 'default' } = {}) {
   const baseKey = canonicalRecipe(recipe);
   const key = `${baseKey}:${frame}`;
   if (!svgCache.has(key)) {
+    const profile = getAnimationProfile(recipe);
+    const baseOptions = recipeOptions(recipe);
+    const frameOptions = (frame !== 'default' && profile.getRecipeFrameOptions)
+      ? profile.getRecipeFrameOptions(baseOptions, frame)
+      : baseOptions;
+
     let rawSvg;
     if (recipe.isCompanion) {
-      rawSvg = createCompanionAvatar(recipe.style, recipeOptions(recipe));
+      rawSvg = createCompanionAvatar(recipe.style, frameOptions);
     } else {
-      rawSvg = createVoxelAvatar(recipeOptions(recipe));
+      rawSvg = createVoxelAvatar(frameOptions);
     }
 
-    if (frame !== 'default') {
-      const profile = getAnimationProfile(recipe);
-      svgCache.set(key, profile.makeFrameSvg ? profile.makeFrameSvg(rawSvg, frame) : rawSvg);
+    if (frame !== 'default' && profile.makeFrameSvg) {
+      svgCache.set(key, profile.makeFrameSvg(rawSvg, frame));
     } else {
       svgCache.set(key, rawSvg);
     }
@@ -192,11 +197,10 @@ export async function preloadAvatars(recipes) {
   }
   const promises = [];
   for (const recipe of unique.values()) {
-    promises.push(loadAvatarImage(recipe, { frame: 'default' }));
-    promises.push(loadAvatarImage(recipe, { frame: 'blink' }));
-    if (!recipe.isCompanion) {
-      promises.push(loadAvatarImage(recipe, { frame: 'look-left' }));
-      promises.push(loadAvatarImage(recipe, { frame: 'look-right' }));
+    const profile = getAnimationProfile(recipe);
+    const frames = profile.frames || ['default', 'blink'];
+    for (const frame of frames) {
+      promises.push(loadAvatarImage(recipe, { frame }));
     }
   }
   const results = await Promise.allSettled(promises);
@@ -222,4 +226,36 @@ export function prettyLabel(value) {
   return value
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/^./, character => character.toUpperCase());
+}
+
+// --- Live DOM <img> Avatar Animator ---
+// Drives multi-frame animations (blink, look-left, look-right, stretch, talk) on DOM <img> elements
+const animatedDomImages = new Map();
+let domAnimTimer = null;
+
+function ensureDomAnimLoop() {
+  if (domAnimTimer || typeof window === 'undefined') return;
+  const start = performance.now();
+  domAnimTimer = window.setInterval(() => {
+    const t = (performance.now() - start) / 1000;
+    for (const [imgEl, state] of animatedDomImages.entries()) {
+      if (!imgEl.isConnected) {
+        animatedDomImages.delete(imgEl);
+        continue;
+      }
+      const profile = getAnimationProfile(state.recipe);
+      const frame = profile.getFrame ? profile.getFrame(t + state.offset) : 'default';
+      if (frame !== state.lastFrame) {
+        state.lastFrame = frame;
+        imgEl.src = avatarDataUrl(state.recipe, { frame });
+      }
+    }
+  }, 140);
+}
+
+export function bindAnimatedAvatar(imgEl, recipe, offset = 0) {
+  if (!imgEl || !recipe) return;
+  imgEl.src = avatarDataUrl(recipe, { frame: 'default' });
+  animatedDomImages.set(imgEl, { recipe, offset, lastFrame: 'default' });
+  ensureDomAnimLoop();
 }

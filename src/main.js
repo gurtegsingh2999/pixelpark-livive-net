@@ -3,6 +3,7 @@ import {
   createRecipe,
   createCompanionRecipe,
   avatarDataUrl,
+  bindAnimatedAvatar,
   preloadAvatars
 } from './avatar.js';
 import {
@@ -554,7 +555,7 @@ function rerollCardCharacter() {
   cardCharacter.recipe = recipe;
   cardCharacter.vibe = pickVibe();
   game.updateNpcRecipe(cardCharacter.id, recipe);
-  $('npc-avatar').src = avatarDataUrl(recipe);
+  bindAnimatedAvatar($('npc-avatar'), recipe, 0);
   $('npc-vibe').textContent = cardCharacter.vibe;
   saveNow();
   showToast(`New look for ${cardCharacter.name}.`);

@@ -1,4 +1,4 @@
-import { avatarDataUrl } from '../avatar.js';
+import { avatarDataUrl, bindAnimatedAvatar } from '../avatar.js';
 import { loadStats } from '../storage.js';
 
 const $ = id => document.getElementById(id);
@@ -188,7 +188,7 @@ export class PanelsUI {
       let avatarEl;
       if (npc?.recipe) {
         avatarEl = document.createElement('img');
-        avatarEl.src = avatarDataUrl(npc.recipe);
+        bindAnimatedAvatar(avatarEl, npc.recipe, Math.random() * 5);
         avatarEl.alt = '';
       } else {
         avatarEl = document.createElement('span');
@@ -257,7 +257,7 @@ export class PanelsUI {
       row.setAttribute('role', 'listitem');
 
       const image = document.createElement('img');
-      image.src = avatarDataUrl(npc.recipe);
+      bindAnimatedAvatar(image, npc.recipe, Math.random() * 5);
       image.alt = '';
 
       const copy = document.createElement('div');
@@ -309,7 +309,7 @@ export class PanelsUI {
 
     const isPlayer = character.isPlayer;
     const isCompanion = character.isCompanion;
-    $('npc-avatar').src = avatarDataUrl(character.recipe);
+    bindAnimatedAvatar($('npc-avatar'), character.recipe, 0);
     $('npc-avatar').alt = `${character.name}'s character`;
 
     if (isPlayer) {

@@ -1,4 +1,4 @@
-import { avatarDataUrl } from './avatar.js';
+import { avatarDataUrl, bindAnimatedAvatar } from './avatar.js';
 
 export class DialogueManager {
   constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame } = {}) {
@@ -71,7 +71,7 @@ export class DialogueManager {
     this.dialogueNpc = npc;
     document.body.classList.add('dialogue-open');
     this.container.hidden = false;
-    this.avatar.src = avatarDataUrl(npc.recipe);
+    bindAnimatedAvatar(this.avatar, npc.recipe, 0);
     this.avatar.alt = `${npc.name}'s character`;
     this.name.textContent = npc.name;
 
@@ -105,7 +105,7 @@ export class DialogueManager {
     this.dialogueNpc = npc;
     document.body.classList.add('dialogue-open');
     this.container.hidden = false;
-    this.avatar.src = avatarDataUrl(npc.recipe);
+    bindAnimatedAvatar(this.avatar, npc.recipe, 0);
     this.avatar.alt = `${npc.name}'s character`;
     this.name.textContent = npc.name;
     this.setBeat(text, choices);

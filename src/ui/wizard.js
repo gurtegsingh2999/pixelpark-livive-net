@@ -2,6 +2,7 @@ import {
   createRecipe,
   rerollRecipe,
   avatarDataUrl,
+  bindAnimatedAvatar,
   TOP_VARIANTS,
   OUTFIT_VARIANTS,
   GLASSES_VARIANTS,
@@ -109,7 +110,7 @@ export class SetupWizard {
     }
     this.syncSwatches();
     const preview = $('player-preview');
-    preview.src = avatarDataUrl(this.draft.playerRecipe);
+    bindAnimatedAvatar(preview, this.draft.playerRecipe, 0);
     preview.alt = `${this.draft.playerName}'s Voxel Art character`;
   }
 
@@ -155,7 +156,7 @@ export class SetupWizard {
       card.setAttribute('role', 'listitem');
 
       const image = document.createElement('img');
-      image.src = avatarDataUrl(npc.recipe);
+      bindAnimatedAvatar(image, npc.recipe, (npc.id ? npc.id.charCodeAt(npc.id.length - 1) : 0) * 0.37);
       image.alt = `${npc.name}, park neighbour`;
       image.loading = 'lazy';
 
@@ -186,7 +187,7 @@ export class SetupWizard {
     if (npc.companion) npc.companion.recipe = createRecipe(); // companion creation fallback or companion recipe
     const image = card.querySelector('img');
     const vibe = card.querySelector('small');
-    if (image) image.src = avatarDataUrl(npc.recipe);
+    if (image) bindAnimatedAvatar(image, npc.recipe, Math.random() * 5);
     if (vibe) vibe.textContent = npc.vibe;
   }
 

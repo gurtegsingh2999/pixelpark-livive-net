@@ -237,18 +237,20 @@ export class WorldRenderer {
       ctx.stroke();
     }
 
-    // Determine animation frame: blink takes priority, then eye gaze direction (left/right/center)
-    const isBlink = profile.isBlinking ? profile.isBlinking(animTime) : false;
+    // Determine animation frame from family profile
     let targetFrame = 'default';
-    if (isBlink) {
+    if (profile.getFrame) {
+      const f = profile.getFrame(animTime);
+      // While moving, still allow blink, otherwise default
+      targetFrame = (character.moving && f !== 'blink') ? 'default' : f;
+    } else if (profile.isBlinking && profile.isBlinking(animTime)) {
       targetFrame = 'blink';
-    } else if (!character.moving && profile.getLookDirection) {
-      targetFrame = profile.getLookDirection(animTime);
     }
 
     let image = getAvatarImage(character.recipe, { frame: targetFrame });
     if (!image) {
-      // Fallback to default frame if specific frame is still decoding
+      // Trigger lazy load for missing frame and fallback to default frame
+      loadAvatarImage(character.recipe, { frame: targetFrame }).catch(() => {});
       image = getAvatarImage(character.recipe, { frame: 'default' });
     }
 
@@ -265,11 +267,9 @@ export class WorldRenderer {
       drawAvatar(ctx, image, footX - width / 2, top, width, height, flip);
       ctx.restore();
     } else {
-      loadAvatarImage(character.recipe, { frame: 'default' }).catch(() => {});
-      loadAvatarImage(character.recipe, { frame: 'blink' }).catch(() => {});
-      if (!character.isCompanion) {
-        loadAvatarImage(character.recipe, { frame: 'look-left' }).catch(() => {});
-        loadAvatarImage(character.recipe, { frame: 'look-right' }).catch(() => {});
+      const frames = profile.frames || ['default', 'blink'];
+      for (const f of frames) {
+        loadAvatarImage(character.recipe, { frame: f }).catch(() => {});
       }
       ctx.fillStyle = 'rgba(20, 30, 22, 0.8)';
       ctx.beginPath();

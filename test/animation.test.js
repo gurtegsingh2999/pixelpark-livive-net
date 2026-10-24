@@ -9,6 +9,7 @@ test('ANIMATION_PROFILES defines distinct isolated animations for each family', 
     const profile = ANIMATION_PROFILES[family];
     assert.ok(profile, `Profile for ${family} must exist`);
     assert.equal(typeof profile.getTransform, 'function', `${family} must have getTransform`);
+    assert.equal(typeof profile.getFrame, 'function', `${family} must have getFrame`);
     assert.equal(typeof profile.isBlinking, 'function', `${family} must have isBlinking`);
     assert.equal(typeof profile.makeFrameSvg, 'function', `${family} must have makeFrameSvg`);
   }
@@ -25,31 +26,49 @@ test('getAnimationProfile selects correct family profile from recipes', () => {
   assert.equal(getAnimationProfile(critter).family, 'critters');
 });
 
-test('avatarSvg supports default and blink frames for voxel-art and companions', () => {
-  const voxelRecipe = createRecipe('test');
-  const defaultVoxelSvg = avatarSvg(voxelRecipe, { frame: 'default' });
-  const blinkVoxelSvg = avatarSvg(voxelRecipe, { frame: 'blink' });
-  assert.notEqual(defaultVoxelSvg, blinkVoxelSvg);
-  assert.ok(blinkVoxelSvg.includes('opacity="1"'));
-
-  const botRecipe = createCompanionRecipe('test', 'voxel-bot');
-  const defaultBotSvg = avatarSvg(botRecipe, { frame: 'default' });
-  const blinkBotSvg = avatarSvg(botRecipe, { frame: 'blink' });
-  assert.notEqual(defaultBotSvg, blinkBotSvg);
-  assert.ok(blinkBotSvg.includes('opacity="1"'));
-});
-
-test('voxel-art supports gaze directions: look-left and look-right', () => {
+test('avatarSvg supports default, blink, stretch, look-left, look-right, and talk frames for voxel-art', () => {
   const voxelRecipe = createRecipe('test');
   const defaultSvg = avatarSvg(voxelRecipe, { frame: 'default' });
+  const blinkSvg = avatarSvg(voxelRecipe, { frame: 'blink' });
+  const stretchSvg = avatarSvg(voxelRecipe, { frame: 'stretch' });
   const leftSvg = avatarSvg(voxelRecipe, { frame: 'look-left' });
   const rightSvg = avatarSvg(voxelRecipe, { frame: 'look-right' });
+  const talkSvg = avatarSvg(voxelRecipe, { frame: 'talk' });
 
+  // Blink activates eyelid overlay and closed eyes
+  assert.notEqual(defaultSvg, blinkSvg);
+  assert.ok(blinkSvg.includes('opacity="1"'));
+
+  // Stretch translates .va-upper group while feet remain planted
+  assert.notEqual(defaultSvg, stretchSvg);
+  assert.ok(stretchSvg.includes('<g class="va-upper" transform="translate(0 -3.5)">'));
+
+  // Look-left and look-right shift the internal eye paths and use side eye variant
   assert.notEqual(defaultSvg, leftSvg);
   assert.notEqual(defaultSvg, rightSvg);
   assert.notEqual(leftSvg, rightSvg);
-  assert.ok(leftSvg.includes('translate(26.5 49)'));
-  assert.ok(rightSvg.includes('translate(31.5 49)'));
+  assert.ok(leftSvg.includes('<g transform="translate(-2.5 0)">'));
+  assert.ok(rightSvg.includes('<g transform="translate(2.5 0)">'));
+
+  // Talk changes mouth & eyebrow expression
+  assert.notEqual(defaultSvg, talkSvg);
+});
+
+test('voxel-bot supports blink, stretch (upper + head lift), look-left, look-right, and talk', () => {
+  const botRecipe = createCompanionRecipe('test', 'voxel-bot');
+  const defaultSvg = avatarSvg(botRecipe, { frame: 'default' });
+  const blinkSvg = avatarSvg(botRecipe, { frame: 'blink' });
+  const stretchSvg = avatarSvg(botRecipe, { frame: 'stretch' });
+  const talkSvg = avatarSvg(botRecipe, { frame: 'talk' });
+
+  assert.notEqual(defaultSvg, blinkSvg);
+  assert.ok(blinkSvg.includes('opacity="1"'));
+
+  assert.notEqual(defaultSvg, stretchSvg);
+  assert.ok(stretchSvg.includes('<g class="vb-upper" transform="translate(0 -2.5)">'));
+  assert.ok(stretchSvg.includes('<g class="vb-head" transform="translate(0 -2.5)">'));
+
+  assert.notEqual(defaultSvg, talkSvg);
 });
 
 test('family animation profiles have different transforms and loops', () => {
@@ -71,7 +90,7 @@ test('family animation profiles have different transforms and loops', () => {
   assert.ok(gazeTransform.translateY < 0);
 
   // Voxel-art stretches with height translateY
-  const voxelTransform = voxel.getTransform(4.8, 48); // ~87% of 5.5s
+  const voxelTransform = voxel.getTransform(3.5, 48); // ~78% of 4.5s
   assert.ok(voxelTransform.translateY < 0);
   assert.ok(voxelTransform.scaleY > 1);
 });
