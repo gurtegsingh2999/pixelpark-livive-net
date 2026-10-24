@@ -172,6 +172,7 @@ export class CheckersMiniGame {
       playerSidelineX: playerTarget.x,
       playerSidelineY: playerTarget.y,
       pieces: this.createInitialPieces(),
+      animatingPiece: null,
       opponent,
       turn: starter,
       winner: null,
@@ -193,6 +194,8 @@ export class CheckersMiniGame {
     const starter = this.nextStarter;
     this.nextStarter = starter === 'player' ? 'opponent' : 'player';
 
+    // Reset hopping piece animation if new round starts
+    this.activeBoard.animatingPiece = null;
     this.activeBoard.pieces = this.createInitialPieces();
     this.activeBoard.turn = starter;
     this.activeBoard.winner = null;
@@ -261,7 +264,7 @@ export class CheckersMiniGame {
     this.selectedCell = null;
     this.activeBoard.status = 'refolding';
     this.activeBoard.foldTimer = 0;
-    this.activeBoard.foldPhase = 2;
+    this.activeBoard.foldPhase = 3;
     this.activeBoard.phaseProgress = 1;
     this.activeBoard.onRefoldComplete = () => {
       if (this.activeBoard?.opponent) {
@@ -358,12 +361,27 @@ export class CheckersMiniGame {
     return forcedFromIndex !== null ? [] : allSimple;
   }
 
-  applyMove(move) {
+  applyMove(move, animate = false) {
     const board = this.activeBoard;
     if (!board) return false;
     const { from, to, jumped } = move;
     const piece = board.pieces[from.index];
     if (!piece) return false;
+
+    if (animate) {
+      board.animatingPiece = {
+        piece: { ...piece },
+        fromRow: from.row,
+        fromCol: from.col,
+        toRow: to.row,
+        toCol: to.col,
+        elapsed: 0,
+        duration: 0.35,
+        jumpedIndex: jumped ? jumped.index : null,
+        promotesToKing: (piece.side === 'player' && to.row === 0 && !piece.king) ||
+                        (piece.side === 'opponent' && to.row === 7 && !piece.king)
+      };
+    }
 
     // Move piece
     board.pieces[from.index] = null;
@@ -478,8 +496,8 @@ export class CheckersMiniGame {
         return false;
       }
 
-      // Execute move
-      const result = this.applyMove(matchingMove);
+      // Execute move with hopping animation
+      const result = this.applyMove(matchingMove, true);
       this.game.triggerCheer(character.id, 1.2);
 
       if (result.completed) {
@@ -595,7 +613,7 @@ export class CheckersMiniGame {
         board.foldTimer = 0;
         board.phaseProgress = 0;
         board.foldPhase++;
-        if (board.foldPhase >= 3) {
+        if (board.foldPhase >= 4) {
           board.status = 'playing';
           board.phaseProgress = 1;
           this.onToast(board.turn === 'player'
@@ -620,6 +638,14 @@ export class CheckersMiniGame {
         }
       }
       return;
+    }
+
+    // Update piece hopping tween animation
+    if (board.animatingPiece) {
+      board.animatingPiece.elapsed += dt;
+      if (board.animatingPiece.elapsed >= board.animatingPiece.duration) {
+        board.animatingPiece = null;
+      }
     }
 
     // Check distance: If player wanders more than 2 spaces away from 8x8 board
@@ -690,35 +716,108 @@ export class CheckersMiniGame {
     const isFolding = status === 'unfolding' || status === 'refolding';
     const progress = typeof phaseProgress === 'number' ? phaseProgress : 1;
 
-    // Outer wooden/fabric game mat border
-    ctx.fillStyle = 'rgba(74, 48, 28, 0.95)';
-    ctx.fillRect(screenX - 6, screenY - 6, boardSize + 12, boardSize + 12);
-    ctx.strokeStyle = 'rgba(40, 24, 12, 0.8)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(screenX - 6, screenY - 6, boardSize + 12, boardSize + 12);
+    // Helper to draw a square or sub-grid on the checkerboard with wooden border
+    const drawBoardCells = (cStart, rStart, cols, rows) => {
+      for (let r = rStart; r < rStart + rows; r++) {
+        for (let c = cStart; c < cStart + cols; c++) {
+          const isDark = (r + c) % 2 === 1;
+          ctx.fillStyle = isDark ? '#3d2817' : '#e6d2b5';
+          ctx.fillRect(screenX + c * TILE, screenY + r * TILE, TILE, TILE);
 
-    // Checkerboard squares
-    for (let r = 0; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
-        const isDark = (r + c) % 2 === 1;
-        ctx.fillStyle = isDark ? '#3d2817' : '#e6d2b5';
-        ctx.fillRect(screenX + c * TILE, screenY + r * TILE, TILE, TILE);
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(screenX + c * TILE, screenY + r * TILE, TILE, TILE);
+        }
       }
-    }
+    };
 
-    // Subtle grid border lines
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(screenX + i * TILE, screenY);
-      ctx.lineTo(screenX + i * TILE, screenY + boardSize);
-      ctx.stroke();
+    const drawPanel = (cStart, rStart, cols, rows, isFlap = false, foldAngle = 0) => {
+      ctx.save();
+      const px = screenX + cStart * TILE;
+      const py = screenY + rStart * TILE;
+      const pw = cols * TILE;
+      const ph = rows * TILE;
 
-      ctx.beginPath();
-      ctx.moveTo(screenX, screenY + i * TILE);
-      ctx.lineTo(screenX + boardSize, screenY + i * TILE);
-      ctx.stroke();
+      if (isFlap && foldAngle !== 0) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 6;
+      }
+
+      // Outer border mat for this section
+      ctx.fillStyle = 'rgba(74, 48, 28, 0.95)';
+      ctx.fillRect(px - 4, py - 4, pw + 8, ph + 8);
+      ctx.strokeStyle = 'rgba(40, 24, 12, 0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(px - 4, py - 4, pw + 8, ph + 8);
+
+      // Cells inside
+      drawBoardCells(cStart, rStart, cols, rows);
+
+      // Flap fold crease shading
+      if (isFlap) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.25 * (1 - Math.sin(foldAngle))})`;
+        ctx.fillRect(px, py, pw, ph);
+      }
+      ctx.restore();
+    };
+
+    if (isFolding) {
+      // 4 folding stages:
+      // Stage 0: 2x2 base center-left at cols 1..2, rows 3..4. Flap extends horizontally right to form 2x4 (cols 1..4, rows 3..4)
+      // Stage 1: 2x4 (cols 1..4, rows 3..4). Flap extends vertically up and down to form 4x4 (cols 1..4, rows 2..5)
+      // Stage 2: 4x4 (cols 1..4, rows 2..5). Flap extends horizontally to cols 0..7 (8x4, rows 2..5)
+      // Stage 3: 8x4 (cols 0..7, rows 2..5). Flaps extend vertically up to row 0 and down to row 7 (8x8)
+      if (foldPhase === 0) {
+        // Base 2x2 at cols 1..2, rows 3..4
+        drawPanel(1, 3, 2, 2);
+        // Flap opening to the right (cols 3..4, rows 3..4)
+        const flapW = 2 * progress;
+        if (flapW > 0.05) {
+          ctx.save();
+          drawPanel(3, 3, flapW, 2, true, progress * Math.PI * 0.5);
+          ctx.restore();
+        }
+      } else if (foldPhase === 1) {
+        // Flat 2x4 at cols 1..4, rows 3..4
+        drawPanel(1, 3, 4, 2);
+        // Flaps opening vertically up (row 2) and down (row 5)
+        const flapH = 1 * progress;
+        if (flapH > 0.05) {
+          drawPanel(1, 3 - flapH, 4, flapH, true, progress * Math.PI * 0.5);
+          drawPanel(1, 5, 4, flapH, true, progress * Math.PI * 0.5);
+        }
+      } else if (foldPhase === 2) {
+        // Flat 4x4 at cols 1..4, rows 2..5 (rows 2, 3, 4, 5)
+        drawPanel(1, 2, 4, 4);
+        // Flaps opening horizontally left (col 0) and right (cols 5..7)
+        const flapLeftW = 1 * progress;
+        const flapRightW = 3 * progress;
+        if (flapLeftW > 0.05) {
+          drawPanel(1 - flapLeftW, 2, flapLeftW, 4, true, progress * Math.PI * 0.5);
+        }
+        if (flapRightW > 0.05) {
+          drawPanel(5, 2, flapRightW, 4, true, progress * Math.PI * 0.5);
+        }
+      } else if (foldPhase === 3) {
+        // Flat 8x4 at cols 0..7, rows 2..5
+        drawPanel(0, 2, 8, 4);
+        // Flaps opening vertically up (rows 0..1) and down (rows 6..7)
+        const flapH = 2 * progress;
+        if (flapH > 0.05) {
+          drawPanel(0, 2 - flapH, 8, flapH, true, progress * Math.PI * 0.5);
+          drawPanel(0, 6, 8, flapH, true, progress * Math.PI * 0.5);
+        }
+      }
+    } else {
+      // Fully open 8x8 board
+      ctx.fillStyle = 'rgba(74, 48, 28, 0.95)';
+      ctx.fillRect(screenX - 6, screenY - 6, boardSize + 12, boardSize + 12);
+      ctx.strokeStyle = 'rgba(40, 24, 12, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(screenX - 6, screenY - 6, boardSize + 12, boardSize + 12);
+
+      drawBoardCells(0, 0, 8, 8);
     }
 
     // Highlight selected piece square and legal move destinations
@@ -749,50 +848,81 @@ export class CheckersMiniGame {
       }
     }
 
+    // Helper to draw a single checkers piece disc
+    const drawPieceDisc = (piece, cx, cy, radius, scale = 1, hopOffset = 0) => {
+      ctx.save();
+      // Drop shadow expands and softens when piece is high in the air
+      ctx.beginPath();
+      const shadowY = cy + 2 + hopOffset * 0.4;
+      const shadowRadius = radius * (1 - hopOffset * 0.005);
+      ctx.arc(cx + 1, shadowY, Math.max(1, shadowRadius), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0.12, 0.35 - hopOffset * 0.008)})`;
+      ctx.fill();
+
+      // Outer piece disc elevated by hopOffset
+      const pieceY = cy - hopOffset;
+      ctx.beginPath();
+      ctx.arc(cx, pieceY, radius * scale, 0, Math.PI * 2);
+      ctx.fillStyle = piece.side === 'player' ? '#d63031' : '#2d3436';
+      ctx.fill();
+      ctx.strokeStyle = piece.side === 'player' ? '#ff7675' : '#636e72';
+      ctx.lineWidth = 2.5 * scale;
+      ctx.stroke();
+
+      // Inner ridge circle
+      ctx.beginPath();
+      ctx.arc(cx, pieceY, radius * 0.65 * scale, 0, Math.PI * 2);
+      ctx.strokeStyle = piece.side === 'player' ? '#fab1a0' : '#b2bec3';
+      ctx.lineWidth = 1.5 * scale;
+      ctx.stroke();
+
+      // King crown insignia
+      if (piece.king) {
+        ctx.fillStyle = '#f1c40f';
+        ctx.font = `bold ${Math.round(16 * scale)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('👑', cx, pieceY);
+      }
+      ctx.restore();
+    };
+
     // Render pieces
     if (status === 'playing' || status === 'ended') {
+      const anim = this.activeBoard.animatingPiece;
+      const skipIndex = anim ? anim.toRow * 8 + anim.toCol : -1;
+
       for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-          const piece = pieces[r * 8 + c];
+          const idx = r * 8 + c;
+          if (idx === skipIndex) continue; // Drawn by tween animation below
+
+          const piece = pieces[idx];
           if (!piece) continue;
 
           const cx = screenX + (c + 0.5) * TILE;
           const cy = screenY + (r + 0.5) * TILE;
           const radius = TILE * 0.38;
-
-          ctx.save();
-          // Piece shadow
-          ctx.beginPath();
-          ctx.arc(cx + 1, cy + 2, radius, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-          ctx.fill();
-
-          // Outer piece disc
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fillStyle = piece.side === 'player' ? '#d63031' : '#2d3436';
-          ctx.fill();
-          ctx.strokeStyle = piece.side === 'player' ? '#ff7675' : '#636e72';
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
-
-          // Inner ridge circle
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius * 0.65, 0, Math.PI * 2);
-          ctx.strokeStyle = piece.side === 'player' ? '#fab1a0' : '#b2bec3';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-
-          // King crown insignia
-          if (piece.king) {
-            ctx.fillStyle = '#f1c40f';
-            ctx.font = 'bold 16px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('👑', cx, cy);
-          }
-          ctx.restore();
+          drawPieceDisc(piece, cx, cy, radius);
         }
+      }
+
+      // Render animating piece with smooth parabolic hop arc
+      if (anim) {
+        const t = Math.min(1, anim.elapsed / anim.duration);
+        // Smooth sine ease in-out for horizontal/vertical translation
+        const ease = 0.5 - 0.5 * Math.cos(t * Math.PI);
+        const curCol = anim.fromCol + (anim.toCol - anim.fromCol) * ease;
+        const curRow = anim.fromRow + (anim.toRow - anim.fromRow) * ease;
+
+        const cx = screenX + (curCol + 0.5) * TILE;
+        const cy = screenY + (curRow + 0.5) * TILE;
+        // Parabolic jump arc: peak hop at middle of trajectory (t = 0.5)
+        const hopHeight = 22 * Math.sin(t * Math.PI);
+        const radius = TILE * 0.38;
+        const scale = 1 + 0.12 * Math.sin(t * Math.PI);
+
+        drawPieceDisc(anim.piece, cx, cy, radius, scale, hopHeight);
       }
     }
 
