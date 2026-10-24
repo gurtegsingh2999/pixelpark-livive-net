@@ -12,7 +12,7 @@ import { getAnimationProfile } from './animation.js';
 export const TILE = 48;
 export const CHARACTER_HEIGHT = TILE * 1.72;
 export const COMPANION_HEIGHT = TILE * 1.05;
-export const PET_HEIGHT = TILE * 1.65; // Doubled size for Cube World animal pets to match park proportions
+export const PET_HEIGHT = COMPANION_HEIGHT; // Original companion size for Cube World animal pets
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
