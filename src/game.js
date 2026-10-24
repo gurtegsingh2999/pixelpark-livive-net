@@ -626,6 +626,7 @@ export class Game {
     this.last = now;
     this.update(dt);
     this.renderer.drawFrame(this);
+    this.onFrame?.();
     requestAnimationFrame(this.frame);
   }
 

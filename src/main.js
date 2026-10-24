@@ -263,7 +263,8 @@ function ensureGame() {
     dialogue = new DialogueManager({
       onDialogueEnd: onDialogueEnded,
       onFriendshipChange: onFriendshipChanged,
-      onPlayGame
+      onPlayGame,
+      getGame: () => game
     });
 
     game = new Game({
@@ -275,6 +276,11 @@ function ensureGame() {
       onActionKey: handleActionKey,
       isMenuOpen: () => Boolean(panels?.isMenuOpen?.())
     });
+    game.onFrame = () => {
+      if (dialogue?.isOpen()) {
+        dialogue.updatePosition();
+      }
+    };
 
     fetchGame = new FetchMiniGame({ game, onToast: showToast });
     tttGame = new TicTacToeMiniGame({
@@ -299,8 +305,7 @@ function updateWanderButton() {
 }
 
 function updateMeta() {
-  const seed = draft?.worldSeed || '';
-  $('world-meta').textContent = `64 × 64 · ${seed}`;
+  // Brand header removed from HUD
 }
 
 function makeLiveNpc() {
@@ -699,6 +704,15 @@ function bindEvents() {
   bindTouchButton('touch-esc', 'Escape');
 
   window.addEventListener('keydown', event => {
+    if (dialogue?.isOpen()) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        dialogue.triggerFocusedChoice();
+        return;
+      }
+    }
+
     if (event.key !== 'Escape') return;
     if (dialogue?.isOpen()) {
       dialogue.close();

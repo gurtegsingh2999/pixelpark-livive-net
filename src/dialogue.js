@@ -7,13 +7,13 @@ function interpolate(template, vars) {
 }
 
 export class DialogueManager {
-  constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame } = {}) {
+  constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame, getGame } = {}) {
     this.dialogueNpc = null;
     this.onDialogueEnd = onDialogueEnd;
     this.onFriendshipChange = onFriendshipChange;
     this.onPlayGame = onPlayGame;
+    this.getGame = getGame;
     this.container = document.getElementById(containerId);
-    this.avatar = document.getElementById('dialogue-avatar');
     this.name = document.getElementById('dialogue-name');
     this.text = document.getElementById('dialogue-text');
     this.choices = document.getElementById('dialogue-choices');
@@ -77,9 +77,8 @@ export class DialogueManager {
     this.dialogueNpc = character;
     document.body.classList.add('dialogue-open');
     this.container.hidden = false;
-    bindAnimatedAvatar(this.avatar, character.recipe, 0);
-    this.avatar.alt = `${character.name}'s character`;
     this.name.textContent = character.name;
+    this.updatePosition();
 
     // Handle companion dialogue (shows name, class, and type)
     if (character.isCompanion) {
@@ -130,10 +129,54 @@ export class DialogueManager {
     this.dialogueNpc = npc;
     document.body.classList.add('dialogue-open');
     this.container.hidden = false;
-    bindAnimatedAvatar(this.avatar, npc.recipe, 0);
-    this.avatar.alt = `${npc.name}'s character`;
     this.name.textContent = npc.name;
     this.setBeat(text, choices);
+    this.updatePosition();
+  }
+
+  triggerFocusedChoice() {
+    const active = document.activeElement;
+    if (active && active.parentElement === this.choices) {
+      active.click();
+      return true;
+    }
+    const first = this.choices?.querySelector('button');
+    if (first) {
+      first.click();
+      return true;
+    }
+    return false;
+  }
+
+  updatePosition() {
+    if (!this.isOpen() || !this.dialogueNpc || !this.container) return;
+    const game = this.getGame?.();
+    if (!game) return;
+
+    const npc = this.dialogueNpc;
+    const pos = game.interpolated ? game.interpolated(npc) : { x: npc.x, y: npc.y };
+    const screenX = (pos.x + 0.5) * 48 - game.camera.x;
+    const screenY = pos.y * 48 - game.camera.y;
+
+    // Anchor bubble near the speaking NPC (slightly above / next to them)
+    const bubbleW = this.container.offsetWidth || 280;
+    const bubbleH = this.container.offsetHeight || 120;
+    const pad = 12;
+
+    let left = screenX + 24; // to the right of NPC
+    // If overflowing right viewport edge, flip to left of NPC
+    if (left + bubbleW > window.innerWidth - pad) {
+      left = screenX - bubbleW - 24;
+    }
+    // Clamp to viewport
+    left = Math.max(pad, Math.min(window.innerWidth - bubbleW - pad, left));
+
+    let top = screenY - bubbleH / 2;
+    // Keep away from top bar and bottom touch controls
+    top = Math.max(70, Math.min(window.innerHeight - bubbleH - 140, top));
+
+    this.container.style.left = `${Math.round(left)}px`;
+    this.container.style.top = `${Math.round(top)}px`;
   }
 
   acceptFriendship() {
