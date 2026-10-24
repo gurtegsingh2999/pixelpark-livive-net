@@ -91,7 +91,7 @@ export class TicTacToeMiniGame {
 
     // Auto-walk Player to left of Tile 4
     if (player.x !== playerTarget.x || player.y !== playerTarget.y) {
-      const pPath = findPath(this.game.terrain, { x: player.x, y: player.y }, playerTarget, boardBlocked);
+      const pPath = findPath(this.game.terrain, { x: player.x, y: player.y }, playerTarget);
       if (pPath.length) player.path = pPath;
       else { player.x = playerTarget.x; player.y = playerTarget.y; }
     }
@@ -102,27 +102,27 @@ export class TicTacToeMiniGame {
     if (playerComp) {
       playerComp.fetchTarget = null;
       playerComp.stagedDestination = playerCompTarget;
-      const pCompPath = findPath(this.game.terrain, { x: playerComp.x, y: playerComp.y }, playerCompTarget, boardBlocked);
+      const pCompPath = findPath(this.game.terrain, { x: playerComp.x, y: playerComp.y }, playerCompTarget);
       if (pCompPath.length) playerComp.path = pCompPath;
       else { playerComp.x = playerCompTarget.x; playerComp.y = playerCompTarget.y; }
       playerComp.direction = 1;
     }
 
-    // Auto-walk Opponent to right of Tile 6
+    // Auto-walk Opponent directly to right of Tile 6
     if (opponent) {
       opponent.inMiniGame = true;
       opponent.moving = false;
-      const oppPath = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, opponentTarget, boardBlocked);
+      const oppPath = findPath(this.game.terrain, { x: opponent.x, y: opponent.y }, opponentTarget);
       if (oppPath.length) opponent.path = oppPath;
       else { opponent.x = opponentTarget.x; opponent.y = opponentTarget.y; }
       opponent.direction = 3; // Facing left toward board
 
-      // Auto-walk Opponent's companion to right of Tile 9
+      // Auto-walk Opponent's companion directly to right of Tile 9
       const oppComp = this.game.getCompanionFor(opponent.id);
       if (oppComp) {
         oppComp.fetchTarget = null;
         oppComp.stagedDestination = opponentCompTarget;
-        const oppCompPath = findPath(this.game.terrain, { x: oppComp.x, y: oppComp.y }, opponentCompTarget, boardBlocked);
+        const oppCompPath = findPath(this.game.terrain, { x: oppComp.x, y: oppComp.y }, opponentCompTarget);
         if (oppCompPath.length) oppComp.path = oppCompPath;
         else { oppComp.x = opponentCompTarget.x; oppComp.y = opponentCompTarget.y; }
         oppComp.direction = 3;

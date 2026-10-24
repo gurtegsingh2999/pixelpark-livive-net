@@ -460,12 +460,14 @@ export class Game {
     const ny = character.y + dy;
     if (!isWalkable(typeAt(this.terrain, nx, ny))) return false;
 
-    // Disallow characters who are NOT active participants in Tic-Tac-Toe from stepping onto the board
+    // Disallow characters who are NOT active participants in Tic-Tac-Toe from stepping onto the board.
+    // Allow the opponent's companion to walk through during setup if they are actively navigating to their staged spectator position.
     const tttGame = this.miniGames.find(m => m.isTileOnBoard && m.isOpen && m.isOpen());
     if (tttGame && tttGame.isTileOnBoard(nx, ny)) {
       const isPlayer = character === this.player;
       const isOpponent = character === tttGame.activeBoard?.opponent;
-      if (!isPlayer && !isOpponent) {
+      const isStagingCompanion = character.isCompanion && Boolean(character.stagedDestination);
+      if (!isPlayer && !isOpponent && !isStagingCompanion) {
         return false;
       }
     }
