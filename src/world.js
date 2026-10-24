@@ -224,8 +224,54 @@ export function generateWorld(seed) {
     grid,
     spawn: safeSpawn,
     component: safeComponent,
-    componentKeys: new Set(safeComponent.map(cell => `${cell.x},${cell.y}`))
+    componentKeys: new Set(safeComponent.map(cell => `${cell.x},${cell.y}`)),
+    scenery: generateScenery(grid, seed, safeSpawn)
   };
+}
+
+export function generateScenery(grid, seed, spawn = { x: 32, y: 32 }) {
+  const random = mulberry32(hashString(`scenery:${seed}`));
+  const types = ['apple-tree', 'puffy-tree', 'chestnut-tree', 'rounded-bush', 'flowering-bush'];
+  const items = [];
+  const occupied = new Set([`${spawn.x},${spawn.y}`]);
+
+  // Scatter 30-45 trees and bushes on grass and field tiles away from spawn
+  const targetCount = 35 + Math.floor(random() * 15);
+  let attempts = 0;
+
+  while (items.length < targetCount && attempts < 800) {
+    attempts++;
+    const x = Math.floor(random() * WORLD_SIZE);
+    const y = Math.floor(random() * WORLD_SIZE);
+    const key = `${x},${y}`;
+
+    if (occupied.has(key)) continue;
+    if (Math.hypot(x - spawn.x, y - spawn.y) < 3) continue;
+
+    const tile = grid[y]?.[x];
+    // Place mostly on grass or flower fields (not dirt paths or water)
+    if (tile !== 'grass' && tile !== 'field') continue;
+
+    const type = types[Math.floor(random() * types.length)];
+    const isTree = type.includes('tree');
+    // Subtle size variation
+    const scale = isTree ? (0.85 + random() * 0.3) : (0.75 + random() * 0.25);
+
+    items.push({
+      id: `scenery-${items.length}`,
+      type,
+      x,
+      y,
+      scale,
+      isObstacle: isTree
+    });
+
+    occupied.add(key);
+  }
+
+  // Sort by Y so they draw with natural depth
+  items.sort((a, b) => a.y - b.y);
+  return items;
 }
 
 export function largestComponentFrom(grid) {

@@ -8,6 +8,7 @@ import {
 import { drawAvatar, getAvatarImage, loadAvatarImage } from './avatar.js';
 import { shouldMirror, UP } from './facing.js';
 import { getAnimationProfile } from './animation.js';
+import sceneryAssets from '../data/nature_scenery.json' with { type: 'json' };
 
 export const TILE = 48;
 export const CHARACTER_HEIGHT = TILE * 1.72;
@@ -104,6 +105,17 @@ export class WorldRenderer {
     this.mctx = minimap?.getContext?.('2d') || null;
     this.tileTextures = null;
     this.minimapBase = null;
+    this.sceneryImages = new Map();
+    this.initScenery();
+  }
+
+  initScenery() {
+    if (typeof Image === 'undefined') return;
+    for (const [key, uri] of Object.entries(sceneryAssets)) {
+      const img = new Image();
+      img.src = uri;
+      this.sceneryImages.set(key, img);
+    }
   }
 
   initTextures() {
@@ -179,14 +191,26 @@ export class WorldRenderer {
       ctx.fill();
     }
 
-    const characters = [];
-    if (game.player) characters.push(game.player);
-    characters.push(...game.npcs);
-    characters.push(...game.companions);
-    characters.sort((a, b) => game.interpolated(a).y - game.interpolated(b).y);
+    // Render characters and scenery sorted by Y depth
+    const renderables = [];
+    if (game.player) renderables.push({ type: 'char', y: game.interpolated(game.player).y, entity: game.player });
+    for (const npc of game.npcs) renderables.push({ type: 'char', y: game.interpolated(npc).y, entity: npc });
+    for (const comp of game.companions) renderables.push({ type: 'char', y: game.interpolated(comp).y, entity: comp });
 
-    for (const character of characters) {
-      this.drawCharacter(game, character);
+    if (Array.isArray(game.scenery)) {
+      for (const item of game.scenery) {
+        renderables.push({ type: 'scenery', y: item.y, entity: item });
+      }
+    }
+
+    renderables.sort((a, b) => a.y - b.y);
+
+    for (const item of renderables) {
+      if (item.type === 'char') {
+        this.drawCharacter(game, item.entity);
+      } else {
+        this.drawSceneryItem(ctx, item.entity);
+      }
     }
 
     ctx.restore();
@@ -194,6 +218,33 @@ export class WorldRenderer {
     const hovered = game.hovered || game.selected;
     if (hovered) this.drawNameplate(game, hovered);
     this.drawMinimap(game);
+  }
+
+  drawSceneryItem(ctx, item) {
+    const img = this.sceneryImages.get(item.type);
+    if (!img || !img.complete) return;
+
+    const isTree = item.type.includes('tree');
+    // Trees stand taller (e.g. 2.4 - 3.2 tiles tall), bushes are compact (1.0 - 1.4 tiles tall)
+    const baseW = isTree ? TILE * 2.5 : TILE * 1.5;
+    const baseH = isTree ? TILE * 3.0 : TILE * 1.4;
+
+    const width = baseW * (item.scale || 1);
+    const height = baseH * (item.scale || 1);
+
+    const footX = (item.x + 0.5) * TILE;
+    const footY = (item.y + 1) * TILE;
+
+    ctx.save();
+    // Subtle ground shadow beneath trees and bushes
+    ctx.beginPath();
+    ctx.ellipse(footX, footY - 2, width * 0.28, height * 0.08, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 18, 12, 0.28)';
+    ctx.fill();
+
+    // Draw image anchored at foot
+    ctx.drawImage(img, footX - width / 2, footY - height, width, height);
+    ctx.restore();
   }
 
   drawCharacter(game, character) {

@@ -129,3 +129,4 @@ needs one.
 - Application code: MIT (`LICENSE`).
 - Character avatars: [DiceBear](https://www.dicebear.com/) (Voxel Art & companion avatar styles, CC0 1.0).
 - 3D Cube World pets & creatures: [Quaternius](https://quaternius.com/) (CC0 / Public Domain), rasterized offline via `scripts/render_cubeworld_pets.py`. See `README.md` for details.
+- Park nature scenery: [Kitbitz](https://kitbitz.art/) Nature Kit (CC0 1.0 Universal).

@@ -178,9 +178,10 @@ export class Game {
     return this.companions.filter(comp => comp.buddyId === buddyId);
   }
 
-  setWorld({ terrain, worldSeed, player, npcs, companions = [], wander = true }) {
+  setWorld({ terrain, worldSeed, player, npcs, companions = [], scenery = [], wander = true }) {
     this.terrain = terrain;
     this.worldSeed = worldSeed;
+    this.scenery = scenery;
     this.player = player ? this.makeCharacter(player, true) : null;
     this.npcs = (npcs || []).map(npc => this.makeCharacter(npc, false));
 

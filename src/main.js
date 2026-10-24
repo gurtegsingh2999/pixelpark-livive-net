@@ -497,7 +497,9 @@ async function enterPark() {
 }
 
 function applyState(state) {
-  const terrain = decodeTerrain(state.terrain) || generateWorld(state.worldSeed).grid;
+  const worldData = generateWorld(state.worldSeed);
+  const terrain = decodeTerrain(state.terrain) || worldData.grid;
+  const scenery = worldData.scenery || [];
   const rawPlayer = {
     id: 'player',
     name: state.playerName || 'You',
@@ -580,6 +582,7 @@ function applyState(state) {
     player: rawPlayer,
     npcs,
     companions,
+    scenery,
     wander: state.wander !== false
   });
   friends = new Set(
