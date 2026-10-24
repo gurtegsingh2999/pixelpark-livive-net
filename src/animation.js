@@ -557,8 +557,79 @@ export const ANIMATION_PROFILES = {
       }
       return svg;
     }
-  }
+  },
+
+  // --- Cube World Animal Pets ---
+  // Dog, Cat, Chicken, Chick, Horse, Pig, Sheep, Wolf, Raccoon
+  'pet-dog': makePetProfile('dog', { trotHop: 0.05, wagTail: true, idleSniff: true }),
+  'pet-cat': makePetProfile('cat', { trotHop: 0.03, sleek: true, idleSniff: false }),
+  'pet-chicken': makePetProfile('chicken', { trotHop: 0.08, peck: true, idleSniff: false }),
+  'pet-chick': makePetProfile('chick', { trotHop: 0.10, peck: true, idleSniff: false }),
+  'pet-horse': makePetProfile('horse', { trotHop: 0.06, wagTail: false, idleSniff: true }),
+  'pet-pig': makePetProfile('pig', { trotHop: 0.04, waddle: true, idleSniff: true }),
+  'pet-sheep': makePetProfile('sheep', { trotHop: 0.04, waddle: true, idleSniff: true }),
+  'pet-wolf': makePetProfile('wolf', { trotHop: 0.06, wagTail: true, idleSniff: true }),
+  'pet-raccoon': makePetProfile('raccoon', { trotHop: 0.04, sleek: true, idleSniff: true })
 };
+
+function makePetProfile(species, { trotHop = 0.05, wagTail = false, peck = false, waddle = false, idleSniff = false } = {}) {
+  return {
+    family: `pet-${species}`,
+    frames: ['default', 'idle2', 'walk1', 'walk2', 'cheer'],
+
+    getFrame(t) {
+      // 1. Idle head tilt / sniff / peck (every 4.0s for 0.8s)
+      const idleCycle = (t % 4.0) / 4.0;
+      if (idleCycle >= 0.70 && idleCycle <= 0.90) {
+        return 'idle2';
+      }
+      return 'default';
+    },
+
+    getTransform(t, characterHeight, { moving = false, movingT = 0 } = {}) {
+      if (moving) {
+        // Quadruped trot / gallop:
+        // Alternate walk frames (walk1 and walk2) based on movingT
+        const hop = Math.sin(movingT * Math.PI);
+        const waddleRotate = waddle ? Math.sin(movingT * Math.PI * 2) * (5.5 * Math.PI / 180) : 0;
+        const trotPitch = peck ? Math.sin(movingT * Math.PI * 2) * (7.0 * Math.PI / 180) : 0;
+
+        return {
+          translateY: -characterHeight * trotHop * hop,
+          translateX: 0,
+          rotate: waddleRotate + trotPitch,
+          scaleX: 1 + 0.03 * hop,
+          scaleY: 1 - 0.02 * hop,
+          alpha: 1,
+          shadowScale: 1 - 0.12 * hop
+        };
+      }
+
+      // Idle breathing and tail wag / sniff sway
+      const breathe = Math.sin(t * 2.8) * 0.02;
+      const tailSway = wagTail ? Math.sin(t * 7.5) * (3.0 * Math.PI / 180) : 0;
+      const peckTilt = (peck && (t % 3.0) < 0.6) ? Math.sin(((t % 3.0) / 0.6) * Math.PI) * (8.0 * Math.PI / 180) : 0;
+
+      return {
+        translateY: -Math.abs(Math.sin(t * 1.8)) * 0.4,
+        translateX: 0,
+        rotate: tailSway + peckTilt,
+        scaleX: 1 - breathe * 0.5,
+        scaleY: 1 + breathe,
+        alpha: 1,
+        shadowScale: 1
+      };
+    },
+
+    isBlinking() {
+      return false;
+    },
+
+    getLookDirection() {
+      return 'default';
+    }
+  };
+}
 
 /**
  * Returns the animation profile for a given recipe.
@@ -566,6 +637,9 @@ export const ANIMATION_PROFILES = {
 export function getAnimationProfile(recipe) {
   if (!recipe) return ANIMATION_PROFILES['voxel-art'];
   if (recipe.isCompanion) {
+    if (ANIMATION_PROFILES[`pet-${recipe.style}`]) {
+      return ANIMATION_PROFILES[`pet-${recipe.style}`];
+    }
     return ANIMATION_PROFILES[recipe.style] || ANIMATION_PROFILES['voxel-bot'];
   }
   return ANIMATION_PROFILES['voxel-art'];

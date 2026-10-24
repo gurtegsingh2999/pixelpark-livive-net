@@ -257,7 +257,12 @@ export class WorldRenderer {
 
     // Determine animation frame from family profile
     let targetFrame = 'default';
-    if (profile.getFrame) {
+    if (isCompanion && character.cheerTimer > 0 && profile.frames?.includes('cheer')) {
+      targetFrame = 'cheer';
+    } else if (character.moving && profile.family?.startsWith('pet-')) {
+      // Alternate pet walk frames: walk1 on first half of step, walk2 on second half
+      targetFrame = movingT < 0.5 ? 'walk1' : 'walk2';
+    } else if (profile.getFrame) {
       const f = profile.getFrame(animTime);
       // Allow gaze companions to look around even while floating; other walkers default during step unless blinking
       targetFrame = (character.moving && f !== 'blink' && !animTransform.hologramGlow) ? 'default' : f;
