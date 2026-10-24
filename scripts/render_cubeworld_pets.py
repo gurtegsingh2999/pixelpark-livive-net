@@ -127,7 +127,7 @@ def parse_obj(obj_path):
     return v, vt, vn, faces
 
 def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
-                img_size=128, world_scale=32.0,
+                img_size=256, world_scale=66.0,
                 yaw_deg=45, pitch_deg=35.264,
                 y_offset=0, leg_swing=0, head_pitch=0):
     """
@@ -181,8 +181,8 @@ def render_mesh(v, vt, vn, faces, atlas_w, atlas_h, atlas_px,
         rx = px_orig * cos_az - pz_orig * sin_az
         rz = px_orig * sin_az + pz_orig * cos_az
         px = rx + img_size / 2
-        # Ground anchor placed 12px from bottom margin of 128x128 canvas
-        py = img_size - 12 - (py_orig * cos_el - rz * sin_el)
+        # Ground anchor placed with padding from bottom of canvas
+        py = img_size - 30 - (py_orig * cos_el - rz * sin_el)
         depth = py_orig * sin_el + rz * cos_el
         transformed_v.append((px, py, depth, [px_orig, py_orig, pz_orig]))
         
@@ -309,10 +309,10 @@ def main():
         max(pt[2] for pt in horse_v) - min(pt[2] for pt in horse_v)
     )
     
-    # Horse fills ~88% of 128px canvas; all other animals scale proportionally
-    img_size = 128
+    # Horse fills ~88% of 256px canvas; all other animals scale proportionally
+    img_size = 256
     unified_world_scale = (img_size * 0.88) / horse_max_dim
-    print(f"Unified 3D World Scale: {unified_world_scale:.2f} px/unit (Horse max dim = {horse_max_dim:.2f}m)")
+    print(f"Unified 3D World Scale: {unified_world_scale:.2f} px/unit (Horse max dim = {horse_max_dim:.2f}m, render size = {img_size}x{img_size})")
 
     models = ['Dog', 'Cat', 'Chicken', 'Chick', 'Horse', 'Pig', 'Sheep', 'Wolf', 'Raccoon']
     sprites_data = {}
