@@ -140,6 +140,7 @@ export class TicTacToeMiniGame {
       winner: null,
       status: 'unfolding', // 'unfolding', 'playing', 'refolding', 'ended'
       foldPhase: 0,
+      phaseProgress: 0, // 0 to 1 smooth continuous progress for folding flap
       foldTimer: 0,
       thinkingTimer: starter === 'opponent' ? 0.8 : 0
     };
@@ -191,6 +192,7 @@ export class TicTacToeMiniGame {
     if (!this.activeBoard) return;
     this.activeBoard.status = 'refolding';
     this.activeBoard.foldPhase = 3;
+    this.activeBoard.phaseProgress = 1;
     this.activeBoard.foldTimer = 0;
     this.activeBoard.onRefoldComplete = onComplete;
     this.walkOpponentToSideline();
@@ -305,14 +307,18 @@ export class TicTacToeMiniGame {
     if (!this.activeBoard) return;
     const board = this.activeBoard;
 
-    // Unfolding animation phases
+    // Unfolding animation phases with smooth angular opening
+    const PHASE_DURATION = 0.35;
     if (board.status === 'unfolding') {
       board.foldTimer += dt;
-      if (board.foldTimer >= 0.28) {
+      board.phaseProgress = Math.min(1, board.foldTimer / PHASE_DURATION);
+      if (board.foldTimer >= PHASE_DURATION) {
         board.foldTimer = 0;
+        board.phaseProgress = 0;
         board.foldPhase++;
         if (board.foldPhase >= 3) {
           board.status = 'playing';
+          board.phaseProgress = 1;
           this.onToast(board.turn === 'player'
             ? 'Board is ready! Step onto a square and press Enter to mark X.'
             : `${board.opponent?.name || 'Opponent'} is contemplating the first move...`);
@@ -321,11 +327,13 @@ export class TicTacToeMiniGame {
       return;
     }
 
-    // Refolding animation phases
+    // Refolding animation phases with smooth closing
     if (board.status === 'refolding') {
       board.foldTimer += dt;
-      if (board.foldTimer >= 0.22) {
+      board.phaseProgress = Math.max(0, 1 - board.foldTimer / (PHASE_DURATION * 0.8));
+      if (board.foldTimer >= PHASE_DURATION * 0.8) {
         board.foldTimer = 0;
+        board.phaseProgress = 1;
         board.foldPhase--;
         if (board.foldPhase < 0) {
           const cb = board.onRefoldComplete;
@@ -456,75 +464,101 @@ export class TicTacToeMiniGame {
 
   render(ctx, camera) {
     if (!this.activeBoard) return;
-    const { originX, originY, grid, status, foldPhase } = this.activeBoard;
+    const { originX, originY, grid, status, foldPhase, phaseProgress } = this.activeBoard;
     const TILE = 48;
     const screenX = originX * TILE - camera.x;
     const screenY = originY * TILE - camera.y;
 
     ctx.save();
 
-    // Determine current rendering rect based on folding phase:
-    // Phase 0: center tile (col 0, row 1)
-    // Phase 1: entire first column (col 0, rows 0..2)
-    // Phase 2: first two columns (cols 0..1, rows 0..2)
-    // Phase 3: full 3x3 board
-    let drawX = screenX;
-    let drawY = screenY;
-    let drawW = TILE * 3;
-    let drawH = TILE * 3;
+    const isFolding = status === 'unfolding' || status === 'refolding';
+    const progress = typeof phaseProgress === 'number' ? phaseProgress : 1;
 
-    if (status === 'unfolding' || status === 'refolding') {
-      if (foldPhase === 0) {
-        drawX = screenX;
-        drawY = screenY + TILE;
-        drawW = TILE;
-        drawH = TILE;
-      } else if (foldPhase === 1) {
-        drawX = screenX;
-        drawY = screenY;
-        drawW = TILE;
-        drawH = TILE * 3;
-      } else if (foldPhase === 2) {
-        drawX = screenX;
-        drawY = screenY;
-        drawW = TILE * 2;
-        drawH = TILE * 3;
+    // Helper to draw a board panel/leaf with realistic cardboard/fabric texture and bevel
+    const drawPanel = (x, y, w, h, isFlap = false, foldAngle = 0) => {
+      ctx.save();
+      if (isFlap && foldAngle !== 0) {
+        // Perspective crease shadow when folding open/closed
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 4;
       }
+
+      // Base card surface
+      ctx.fillStyle = isFlap ? 'rgba(238, 230, 210, 0.98)' : 'rgba(245, 238, 220, 0.95)';
+      ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+
+      // Cardboard/fabric trim border
+      ctx.strokeStyle = isFlap ? 'rgba(90, 60, 35, 0.65)' : 'rgba(120, 80, 50, 0.45)';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+
+      // Crease line on edges
+      if (isFlap) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.18 * (1 - Math.sin(foldAngle))})`;
+        ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+      }
+      ctx.restore();
+    };
+
+    if (isFolding) {
+      // Phase 0: Placed on center-left tile 4 (screenX, screenY + TILE).
+      // Folds vertically up and down to reveal tiles 7 and 1 (entire column 0).
+      if (foldPhase === 0) {
+        // Center base tile
+        drawPanel(screenX, screenY + TILE, TILE, TILE);
+
+        // Flaps folding outward vertically
+        const flapH = TILE * progress;
+        if (flapH > 1) {
+          // Top flap opening upward
+          drawPanel(screenX, screenY + TILE - flapH, TILE, flapH, true, progress * Math.PI * 0.5);
+          // Bottom flap opening downward
+          drawPanel(screenX, screenY + TILE * 2, TILE, flapH, true, progress * Math.PI * 0.5);
+        }
+      } else if (foldPhase === 1) {
+        // Phase 1: Column 0 is fully unfolded.
+        // Middle column (tiles 2, 5, 8) unfolds outward to the right.
+        drawPanel(screenX, screenY, TILE, TILE * 3);
+
+        const flapW = TILE * progress;
+        if (flapW > 1) {
+          drawPanel(screenX + TILE, screenY, flapW, TILE * 3, true, progress * Math.PI * 0.5);
+        }
+      } else if (foldPhase === 2) {
+        // Phase 2: Column 0 and Column 1 are flat.
+        // Last column (tiles 3, 6, 9) unfolds outward to the right.
+        drawPanel(screenX, screenY, TILE * 2, TILE * 3);
+
+        const flapW = TILE * progress;
+        if (flapW > 1) {
+          drawPanel(screenX + TILE * 2, screenY, flapW, TILE * 3, true, progress * Math.PI * 0.5);
+        }
+      }
+    } else {
+      // Full 3x3 unfolded board
+      drawPanel(screenX, screenY, TILE * 3, TILE * 3);
     }
 
-    // Canvas ground mat
-    ctx.fillStyle = 'rgba(245, 238, 220, 0.94)';
-    ctx.fillRect(drawX - 4, drawY - 4, drawW + 8, drawH + 8);
-
-    ctx.strokeStyle = 'rgba(120, 80, 50, 0.45)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(drawX - 4, drawY - 4, drawW + 8, drawH + 8);
-
-    // Only render grid lines and pieces if fully or partially unfolded
-    if (foldPhase >= 1) {
+    // Grid lines rendered once mostly flat
+    if (!isFolding || foldPhase >= 2) {
       ctx.strokeStyle = 'rgba(60, 40, 20, 0.7)';
       ctx.lineWidth = 4;
       ctx.lineCap = 'round';
 
-      // Internal lines
-      if (foldPhase >= 2) {
-        ctx.beginPath();
-        ctx.moveTo(screenX + TILE, screenY);
-        ctx.lineTo(screenX + TILE, screenY + drawH);
-        ctx.stroke();
-      }
-      if (foldPhase >= 3) {
-        ctx.beginPath();
-        ctx.moveTo(screenX + TILE * 2, screenY);
-        ctx.lineTo(screenX + TILE * 2, screenY + drawH);
-        ctx.stroke();
-      }
-
+      // Vertical lines
       ctx.beginPath();
-      ctx.moveTo(drawX, screenY + TILE);
-      ctx.lineTo(drawX + drawW, screenY + TILE);
-      ctx.moveTo(drawX, screenY + TILE * 2);
-      ctx.lineTo(drawX + drawW, screenY + TILE * 2);
+      ctx.moveTo(screenX + TILE, screenY);
+      ctx.lineTo(screenX + TILE, screenY + TILE * 3);
+      if (!isFolding || (foldPhase === 2 && progress > 0.8)) {
+        ctx.moveTo(screenX + TILE * 2, screenY);
+        ctx.lineTo(screenX + TILE * 2, screenY + TILE * 3);
+      }
+      // Horizontal lines
+      ctx.moveTo(screenX, screenY + TILE);
+      ctx.lineTo(screenX + (isFolding ? TILE * 2 : TILE * 3), screenY + TILE);
+      ctx.moveTo(screenX, screenY + TILE * 2);
+      ctx.lineTo(screenX + (isFolding ? TILE * 2 : TILE * 3), screenY + TILE * 2);
       ctx.stroke();
     }
 
