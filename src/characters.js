@@ -37,6 +37,20 @@ export function canCollide(mover, obstacle) {
   return true;
 }
 
+/**
+ * Offsets that spread spectators evenly above and below an anchor row.
+ * Companion 1 sits below (+1), companion 2 above (-1), then +2, -2, and so on,
+ * so a group never stacks into a single column on one side of the player.
+ */
+export function spectatorOffsets(count) {
+  const offsets = [];
+  for (let i = 0; i < count; i++) {
+    const step = Math.floor(i / 2) + 1;
+    offsets.push(i % 2 === 0 ? step : -step);
+  }
+  return offsets;
+}
+
 export function formatCompanionInfo(companion) {
   const style = companion?.recipe?.style || '';
   const pets = ['dog', 'cat', 'chicken', 'chick', 'horse', 'pig', 'sheep', 'wolf', 'raccoon', 'hedgehog'];

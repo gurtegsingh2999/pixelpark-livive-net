@@ -326,7 +326,9 @@ export class WorldRenderer {
     const footY = (position.y + 1) * TILE;
     const movingT = character.moving ? clamp(character.elapsed / character.duration, 0, 1) : 0;
     const cheerHop = isCompanion && character.cheerTimer > 0
-      ? Math.abs(Math.sin((1.4 - character.cheerTimer) * 14)) * TILE * 0.45
+      ? Math.abs(Math.sin(
+          (character.cheerPhase || 0) + (character.cheerElapsed || 0) * (character.cheerRate || 12)
+        )) * TILE * (character.cheerHeight || 0.42)
       : 0;
 
     // Hash character id to de-synchronize blinks and idle cycles so neighbours don't blink in unison

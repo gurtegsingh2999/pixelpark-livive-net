@@ -4,19 +4,22 @@ import { createStarterInventory, BALL_COLORS } from '../src/inventory.js';
 import { createCompanionRecipe, canonicalRecipe, COMPANION_STYLES } from '../src/avatar.js';
 import { TicTacToeMiniGame } from '../src/games/tic-tac-toe.js';
 import { CheckersMiniGame } from '../src/games/checkers.js';
+import { ChessMiniGame } from '../src/games/chess.js';
 import { FetchMiniGame } from '../src/games/fetch.js';
 import { recordGameResult, loadStats } from '../src/storage.js';
 import { rollReward, applyReward } from '../src/rewards.js';
 
-test('createStarterInventory yields ball, tic-tac-toe, and checkers', () => {
+test('createStarterInventory yields ball, tic-tac-toe, checkers, and chess', () => {
   const inv = createStarterInventory();
-  assert.equal(inv.length, 3);
+  assert.equal(inv.length, 4);
   const ball = inv.find(i => i.id === 'ball');
   const ttt = inv.find(i => i.id === 'tic-tac-toe');
   const checkers = inv.find(i => i.id === 'checkers');
+  const chess = inv.find(i => i.id === 'chess');
   assert.ok(ball);
   assert.ok(ttt);
   assert.ok(checkers);
+  assert.ok(chess);
   assert.ok(BALL_COLORS.includes(ball.color));
 });
 
@@ -254,4 +257,123 @@ test('bystander companions are not frozen during active mini-games and can follo
 
   assert.equal(fakeGame.isParticipantCompanion(playerComp), true);
   assert.equal(fakeGame.isParticipantCompanion(bystanderComp), false);
+});
+
+test('Checkers opponent continues forced double and triple jumps without freezing', () => {
+  const fakeTerrain = Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'grass'));
+  const player = { id: 'player', x: 9, y: 13, moving: false, path: [] };
+  const opponent = { id: 'npc-opp', name: 'Opp', x: 13, y: 12, moving: false, path: [] };
+  const fakeGame = {
+    terrain: fakeTerrain,
+    player,
+    npcs: [opponent],
+    companions: [],
+    getCompanionsFor: () => [],
+    getCompanionFor: () => null,
+    triggerCheer: () => {}
+  };
+  const checkers = new CheckersMiniGame({
+    game: fakeGame,
+    onToast: () => {},
+    onGameEnd: () => {},
+    onAbandonPrompt: () => {}
+  });
+
+  const pieces = Array(64).fill(null);
+  pieces[1] = { side: 'opponent', king: false };  // row 0, col 1
+  pieces[10] = { side: 'player', king: false };   // row 1, col 2 (first capture)
+  pieces[28] = { side: 'player', king: false };   // row 3, col 4 (second capture)
+  pieces[46] = { side: 'player', king: false };   // row 5, col 6 (third capture)
+  pieces[56] = { side: 'player', king: false };   // keeps the player side alive
+
+  checkers.activeBoard = {
+    originX: 10,
+    originY: 10,
+    sidelineX: 18,
+    sidelineY: 13,
+    playerSidelineX: 9,
+    playerSidelineY: 13,
+    pieces,
+    animatingPiece: null,
+    opponent,
+    turn: 'opponent',
+    winner: null,
+    status: 'playing',
+    foldTimer: 0,
+    foldPhase: 0,
+    phaseProgress: 1,
+    thinkingTimer: 0,
+    multiJumpFrom: null
+  };
+  checkers.selectedCell = { row: 0, col: 1, index: 1 };
+  checkers.walkOpponentToSideline = () => {};
+
+  // Opponent is standing on the first landing square and takes the first leap.
+  assert.equal(checkers.handleAction(opponent), true);
+  assert.equal(checkers.activeBoard.pieces[10], null);
+  assert.equal(checkers.activeBoard.multiJumpFrom, 19);
+  assert.equal(checkers.activeBoard.turn, 'opponent');
+  assert.ok(checkers.activeBoard.thinkingTimer > 0, 'AI should schedule its next leap');
+
+  // AI must keep choosing forced continuations until the chain ends.
+  const hops = [
+    { to: { x: 15, y: 14 }, landed: 37, jumped: 28 },
+    { to: { x: 17, y: 16 }, landed: 55, jumped: 46 }
+  ];
+
+  for (const hop of hops) {
+    checkers.executeOpponentMove();
+    assert.deepEqual(checkers.activeBoard.steppingTo, hop.to);
+    opponent.x = hop.to.x;
+    opponent.y = hop.to.y;
+    opponent.path = [];
+
+    // The update loop resumes the chain instead of leaving the board stuck.
+    checkers.activeBoard.thinkingTimer = 0;
+    checkers.update(0.016);
+    assert.equal(checkers.activeBoard.steppingTo, null);
+    assert.equal(checkers.activeBoard.pieces[hop.jumped], null);
+    assert.equal(checkers.activeBoard.pieces[hop.landed]?.side, 'opponent');
+  }
+
+  assert.equal(checkers.activeBoard.multiJumpFrom, null);
+  assert.equal(checkers.activeBoard.turn, 'player');
+});
+
+test('mini-games seat multiple companions above and below the player', () => {
+  const terrain = Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'grass'));
+  const specs = [
+    { name: 'tic-tac-toe', playerRowOffset: 1, make: game => new TicTacToeMiniGame({ game }) },
+    { name: 'checkers', playerRowOffset: 3, make: game => new CheckersMiniGame({ game }) },
+    { name: 'chess', playerRowOffset: 3, make: game => new ChessMiniGame({ game }) }
+  ];
+
+  for (const spec of specs) {
+    const player = { id: 'player', x: 20, y: 20, direction: 0, moving: false, path: [] };
+    const opponent = { id: 'npc-opp', name: 'Opp', x: 24, y: 20, moving: false, path: [] };
+    const compA = { id: 'comp-a', isCompanion: true, buddyId: 'player', x: 19, y: 22, moving: false, path: [] };
+    const compB = { id: 'comp-b', isCompanion: true, buddyId: 'player', x: 21, y: 22, moving: false, path: [] };
+    const game = {
+      terrain,
+      player,
+      npcs: [opponent],
+      companions: [compA, compB],
+      getCompanionsFor: id => (id === 'player' ? [compA, compB] : []),
+      getCompanionFor: () => null,
+      triggerCheer: () => {}
+    };
+
+    const miniGame = spec.make(game);
+    assert.equal(miniGame.unfurlBoard(opponent), true, `${spec.name} should unfurl`);
+    const { originX, originY } = miniGame.activeBoard;
+    const playerRow = originY + spec.playerRowOffset;
+
+    for (const comp of [compA, compB]) {
+      assert.equal(comp.stagedDestination.x, originX - 1, `${spec.name} companions stay on the sideline`);
+    }
+    const offsets = [compA, compB]
+      .map(comp => comp.stagedDestination.y - playerRow)
+      .sort((a, b) => a - b);
+    assert.deepEqual(offsets, [-1, 1], `${spec.name} companions should flank the player`);
+  }
 });

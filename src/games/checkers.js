@@ -1,4 +1,5 @@
 import { findPath, findOpenTile, isWalkable, typeAt } from '../world.js';
+import { spectatorOffsets } from '../characters.js';
 import { recordGameResult } from '../storage.js';
 
 export const CHECKERS_BOARD_SIZE = 8;
@@ -134,9 +135,11 @@ export class CheckersMiniGame {
     player.direction = 1; // Facing right toward board
 
     // Auto-walk all active Player companions to spectator positions
+    // They alternate above and below the player instead of stacking in one column.
     const playerComps = this.game.getCompanionsFor?.('player') || [];
+    const offsets = spectatorOffsets(playerComps.length);
     playerComps.forEach((comp, idx) => {
-      const target = { x: spot.originX - 1, y: spot.originY + 4 + idx };
+      const target = { x: playerTarget.x, y: playerTarget.y + offsets[idx] };
       comp.fetchTarget = null;
       comp.stagedDestination = target;
       const compPath = findPath(this.game.terrain, { x: comp.x, y: comp.y }, target);
@@ -597,6 +600,12 @@ export class CheckersMiniGame {
         // Multi-jump continues
         this.selectedCell = matchingMove.to;
         this.onToast('Double jump! Take the next capture.');
+
+        // The opponent keeps the turn for a forced chain jump, so schedule its
+        // next leap rather than leaving the board waiting forever.
+        if (!isPlayer) {
+          this.activeBoard.thinkingTimer = 0.35 + Math.random() * 0.25;
+        }
       }
 
       return true;

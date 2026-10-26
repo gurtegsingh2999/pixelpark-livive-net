@@ -11,6 +11,7 @@
       "text": "Hi, I'm {name}. Good to see you again!",
       "playTttLabel": "Play Tic-Tac-Toe",
       "playCheckersLabel": "Play Checkers",
+      "playChessLabel": "Play Chess",
       "closeLabel": "See you"
     },
     "accepted": {
@@ -49,6 +50,20 @@
       "loss": "King me! Good game of Checkers. Rematch?",
       "draw": "No more legal moves! That checkers match is a draw. Rematch?",
       "abandonPrompt": "{name}: Leaving the board? Abandon the Checkers match and pack up?",
+      "abandonChoices": [
+        { "label": "Abandon & Pack up", "className": "danger", "action": "abandon" },
+        { "label": "Keep Playing", "className": "pill", "action": "keep_playing" }
+      ],
+      "endChoices": [
+        { "label": "Play again", "className": "primary", "action": "play_again" },
+        { "label": "Pack up", "className": "pill quiet", "action": "pack_up" }
+      ]
+    },
+    "chess": {
+      "win": "Checkmate! Brilliant game of Chess. Want another match?",
+      "loss": "Checkmate! Good game of Chess. Rematch?",
+      "draw": "Stalemate! That chess match is a draw. Rematch?",
+      "abandonPrompt": "{name}: Leaving the board? Abandon the Chess match and pack up?",
       "abandonChoices": [
         { "label": "Abandon & Pack up", "className": "danger", "action": "abandon" },
         { "label": "Keep Playing", "className": "pill", "action": "keep_playing" }

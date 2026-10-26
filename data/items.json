@@ -21,6 +21,13 @@
       "action": "unfurl",
       "description": "Unfurl an 8x8 draughts board on the grass.",
       "icon": "🏁"
+    },
+    "chess": {
+      "id": "chess",
+      "name": "Chess Set",
+      "action": "unfurl",
+      "description": "Unfurl an 8x8 chess board on the grass.",
+      "icon": "♟️"
     }
   },
   "starter": [
@@ -33,6 +40,9 @@
     },
     {
       "id": "checkers"
+    },
+    {
+      "id": "chess"
     }
   ]
 }

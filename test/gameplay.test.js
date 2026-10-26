@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { occupantAtTile, reservationAtTile, formatCompanionInfo, canCollide } from '../src/characters.js';
+import { occupantAtTile, reservationAtTile, formatCompanionInfo, canCollide, spectatorOffsets } from '../src/characters.js';
 import { DOWN, LEFT, RIGHT, UP, directionForStep, shouldMirror } from '../src/facing.js';
 import { NPC_NAMES, VIBES, pickName, pickVibe } from '../src/names.js';
 import { Game } from '../src/game.js';
@@ -107,6 +107,13 @@ test('canCollide enforces player companion no-collision rule and asymmetric NPC 
   assert.equal(canCollide(npcCompanion, npcCompanion), false);
 });
 
+test('spectatorOffsets alternates companions above and below the player', () => {
+  assert.deepEqual(spectatorOffsets(0), []);
+  assert.deepEqual(spectatorOffsets(1), [1]);
+  assert.deepEqual(spectatorOffsets(2), [1, -1]);
+  assert.deepEqual(spectatorOffsets(5), [1, -1, 2, -2, 3]);
+});
+
 test('the game module loads', () => {
   assert.equal(typeof Game, 'function');
 });
@@ -131,4 +138,38 @@ test('addNpc properly tracks companion with buddy', () => {
   // Ensure the NPC didn't spawn immediately under the player
   const distPlayerNpc = Math.abs(added.x - game.player.x) + Math.abs(added.y - game.player.y);
   assert.ok(distPlayerNpc >= 6, `Expected distance >= 6, got ${distPlayerNpc}`);
+});
+
+test('companions cheer with individual timing and turn in place', () => {
+  const game = new Game();
+  const player = { id: 'player', x: 30, y: 30 };
+  game.player = player;
+  game.companions = [
+    game.makeCompanion({ id: 'comp-a', name: 'A', direction: RIGHT }, player),
+    game.makeCompanion({ id: 'comp-b', name: 'B', direction: RIGHT }, player)
+  ];
+
+  game.triggerCheer('player', 1.4);
+
+  for (const comp of game.companions) {
+    assert.ok(comp.cheerTimer > 0);
+    assert.ok(Number.isFinite(comp.cheerPhase));
+    assert.ok(comp.cheerRate > 0);
+    assert.ok(comp.cheerHeight > 0);
+  }
+
+  const comp = game.companions[0];
+  comp.cheerTurnTimer = 0;
+  comp.direction = RIGHT;
+  game.updateCompanion(comp, 0.016);
+  assert.ok([DOWN, LEFT, RIGHT].includes(comp.direction), 'cheer should turn in place');
+  assert.ok(comp.cheerElapsed > 0, 'hop clock advances for the renderer');
+  assert.ok(comp.cheerTurnTimer > 0);
+
+  // Facing is restored once the cheer finishes.
+  comp.cheerReturnDirection = LEFT;
+  comp.cheerTimer = 0.01;
+  game.updateCompanion(comp, 0.05);
+  assert.equal(comp.cheerTimer, 0);
+  assert.equal(comp.direction, LEFT);
 });

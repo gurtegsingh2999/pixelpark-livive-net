@@ -21,6 +21,7 @@ import { createStarterInventory } from './inventory.js';
 import { FetchMiniGame } from './games/fetch.js';
 import { TicTacToeMiniGame } from './games/tic-tac-toe.js';
 import { CheckersMiniGame } from './games/checkers.js';
+import { ChessMiniGame } from './games/chess.js';
 import { SetupWizard } from './ui/wizard.js';
 import { PanelsUI } from './ui/panels.js';
 import engineConfig from '../data/engine_config.json' with { type: 'json' };
@@ -38,6 +39,7 @@ let dialogue = null;
 let fetchGame = null;
 let tttGame = null;
 let checkersGame = null;
+let chessGame = null;
 let wizard = null;
 let panels = null;
 let friends = new Set();
@@ -85,6 +87,8 @@ function onPlayGame(type, opponent) {
     tttGame?.unfurlBoard(opponent);
   } else if (type === 'checkers') {
     checkersGame?.unfurlBoard(opponent);
+  } else if (type === 'chess') {
+    chessGame?.unfurlBoard(opponent);
   }
 }
 
@@ -95,7 +99,12 @@ function openDialogue(npc) {
   const isFriend = friends.has(npc.id);
   const hasTTT = Boolean(game?.player?.inventory?.some(i => i.id === 'tic-tac-toe'));
   const hasCheckers = Boolean(game?.player?.inventory?.some(i => i.id === 'checkers'));
-  dialogue.open(npc, isFriend, { canPlayTicTacToe: isFriend && hasTTT, canPlayCheckers: isFriend && hasCheckers });
+  const hasChess = Boolean(game?.player?.inventory?.some(i => i.id === 'chess'));
+  dialogue.open(npc, isFriend, {
+    canPlayTicTacToe: isFriend && hasTTT,
+    canPlayCheckers: isFriend && hasCheckers,
+    canPlayChess: isFriend && hasChess
+  });
 }
 
 function makeDraft() {
@@ -233,6 +242,44 @@ function onCheckersGameEnd(winner, opponent) {
   dialogue.openCustomBeat(opponent, winText, choices);
 }
 
+function onChessGameEnd(winner, opponent) {
+  if (!opponent) return;
+  const chessSpecs = dialogueData.dialogues.chess;
+  let outcome = 'draw';
+  if (winner === 'player') outcome = 'win';
+  else if (winner === 'opponent') outcome = 'loss';
+
+  let winText = winner === 'player' ? chessSpecs.win : (winner === 'opponent' ? chessSpecs.loss : chessSpecs.draw);
+
+  // Grant rewards if outcome rolled
+  const reward = rollReward(game, 'chess', outcome);
+  if (reward) {
+    const notices = applyReward(game, reward);
+    if (notices.length) {
+      winText += `\nRewards: ${notices.join(' · ')}`;
+      showToast(`Rewards: ${notices.join(' · ')}`);
+      if (winner === 'player') {
+        game.triggerCheer('player');
+      }
+    }
+  }
+
+  const choices = chessSpecs.endChoices.map(c => ({
+    label: c.label,
+    className: c.className,
+    onClick: () => {
+      dialogue.close();
+      if (c.action === 'play_again') {
+        chessGame?.resetRound();
+      } else {
+        chessGame?.packUpBoard();
+      }
+    }
+  }));
+
+  dialogue.openCustomBeat(opponent, winText, choices);
+}
+
 function openPlayerMenu() {
   if (!game?.player) return;
   const player = game.player;
@@ -291,6 +338,10 @@ function handleActionKey(character) {
     checkersGame.handleAction(character);
     return;
   }
+  if (chessGame?.isOpen()) {
+    chessGame.handleAction(character);
+    return;
+  }
   if (dialogue?.isOpen() || (Date.now() - (dialogue?.justClosedAt || 0) < 300)) {
     return;
   }
@@ -339,6 +390,22 @@ function onCheckersAbandonPrompt(onConfirm, onCancel) {
   dialogue.openCustomBeat(opponent, promptText, choices);
 }
 
+function onChessAbandonPrompt(onConfirm, onCancel) {
+  const opponent = chessGame?.activeBoard?.opponent;
+  const oppName = opponent?.name || 'Your friend';
+  const promptText = dialogueData.dialogues.chess.abandonPrompt.replace('{name}', oppName);
+  const choices = dialogueData.dialogues.chess.abandonChoices.map(c => ({
+    label: c.label,
+    className: c.className,
+    onClick: () => {
+      dialogue.close();
+      if (c.action === 'abandon') onConfirm();
+      else onCancel();
+    }
+  }));
+  dialogue.openCustomBeat(opponent, promptText, choices);
+}
+
 function ensureGame() {
   if (!game) {
     dialogue = new DialogueManager({
@@ -376,9 +443,16 @@ function ensureGame() {
       onGameEnd: onCheckersGameEnd,
       onAbandonPrompt: onCheckersAbandonPrompt
     });
+    chessGame = new ChessMiniGame({
+      game,
+      onToast: showToast,
+      onGameEnd: onChessGameEnd,
+      onAbandonPrompt: onChessAbandonPrompt
+    });
     game.registerMiniGame(fetchGame);
     game.registerMiniGame(tttGame);
     game.registerMiniGame(checkersGame);
+    game.registerMiniGame(chessGame);
   }
   return game;
 }
@@ -833,6 +907,9 @@ function boot() {
     onUnfurlCheckers: opponent => checkersGame?.unfurlBoard(opponent),
     onPackUpCheckers: () => checkersGame?.packUpBoard(),
     isCheckersOpen: () => checkersGame?.isOpen(),
+    onUnfurlChess: opponent => chessGame?.unfurlBoard(opponent),
+    onPackUpChess: () => chessGame?.packUpBoard(),
+    isChessOpen: () => chessGame?.isOpen(),
     onSave: saveNow,
     onSelect: character => panels?.showCard(character),
     onAddNeighbour: addNeighbour,

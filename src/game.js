@@ -7,7 +7,7 @@ import {
   findPath
 } from './world.js';
 import { occupantAtTile, reservationAtTile, canCollide } from './characters.js';
-import { directionForStep } from './facing.js';
+import { directionForStep, DOWN, LEFT, RIGHT } from './facing.js';
 import { WorldRenderer, TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
 import engineConfig from '../data/engine_config.json' with { type: 'json' };
 
@@ -140,6 +140,7 @@ export class Game {
     const rawY = Number.isFinite(Number(input.y)) ? Number(input.y) : defaultY;
     const x = clamp(Math.round(rawX), 0, WORLD_SIZE - 1);
     const y = clamp(Math.round(rawY), 0, WORLD_SIZE - 1);
+    const direction = Number(input.direction) || 0;
     return {
       id: input.id || `comp-${Math.random().toString(36).slice(2, 9)}`,
       name: input.name || 'Buddy',
@@ -155,10 +156,16 @@ export class Game {
       moving: false,
       elapsed: 0,
       duration: COMPANION_STEP,
-      direction: Number(input.direction) || 0,
+      direction,
       fetchTarget: null,
       carryingBall: false,
       cheerTimer: 0,
+      cheerElapsed: 0,
+      cheerPhase: Math.random() * Math.PI * 2,
+      cheerRate: 9 + Math.random() * 6,
+      cheerHeight: 0.36 + Math.random() * 0.12,
+      cheerTurnTimer: 0,
+      cheerReturnDirection: direction,
       path: []
     };
   }
@@ -166,7 +173,14 @@ export class Game {
   triggerCheer(buddyId, duration = 1.4) {
     const comps = this.getCompanionsFor(buddyId);
     for (const comp of comps) {
-      comp.cheerTimer = duration;
+      // Randomise the hop phase, cadence, and length so buddies never bounce in unison.
+      comp.cheerTimer = duration * (0.85 + Math.random() * 0.3);
+      comp.cheerElapsed = 0;
+      comp.cheerPhase = Math.random() * Math.PI * 2;
+      comp.cheerRate = 9 + Math.random() * 6;
+      comp.cheerHeight = 0.36 + Math.random() * 0.12;
+      comp.cheerTurnTimer = 0.12 + Math.random() * 0.22;
+      if (!comp.moving) comp.cheerReturnDirection = comp.direction;
     }
   }
 
@@ -601,6 +615,22 @@ export class Game {
   updateCompanion(comp, dt) {
     if (comp.cheerTimer > 0) {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
+      comp.cheerElapsed = (comp.cheerElapsed || 0) + dt;
+
+      // Turn in place now and then while cheering so the hop reads as clapping
+      // rather than a rigid synchronized bounce. Facing is restored afterwards.
+      if (!comp.moving) {
+        comp.cheerTurnTimer = (comp.cheerTurnTimer || 0) - dt;
+        if (comp.cheerTurnTimer <= 0) {
+          const roll = Math.random();
+          comp.direction = roll < 0.4 ? LEFT : (roll < 0.8 ? RIGHT : DOWN);
+          comp.cheerTurnTimer = 0.18 + Math.random() * 0.42;
+        }
+      }
+
+      if (comp.cheerTimer === 0 && !comp.moving) {
+        comp.direction = comp.cheerReturnDirection ?? comp.direction;
+      }
     }
 
     if (comp.moving) {

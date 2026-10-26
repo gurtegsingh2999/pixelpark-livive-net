@@ -25,6 +25,9 @@ export class PanelsUI {
     onUnfurlCheckers,
     onPackUpCheckers,
     isCheckersOpen,
+    onUnfurlChess,
+    onPackUpChess,
+    isChessOpen,
     onSave,
     onSelect,
     onAddNeighbour,
@@ -40,6 +43,9 @@ export class PanelsUI {
     this.onUnfurlCheckers = onUnfurlCheckers;
     this.onPackUpCheckers = onPackUpCheckers;
     this.isCheckersOpen = isCheckersOpen;
+    this.onUnfurlChess = onUnfurlChess;
+    this.onPackUpChess = onPackUpChess;
+    this.isChessOpen = isChessOpen;
     this.onSave = onSave;
     this.onSelect = onSelect;
     this.onAddNeighbour = onAddNeighbour;
@@ -205,6 +211,14 @@ export class PanelsUI {
           } else {
             const friend = this.friendNpcs()[0] || game.npcs[0];
             this.onUnfurlCheckers?.(friend);
+          }
+        } else if (item.id === 'chess') {
+          this.closeMenu();
+          if (this.isChessOpen?.()) {
+            this.onPackUpChess?.();
+          } else {
+            const friend = this.friendNpcs()[0] || game.npcs[0];
+            this.onUnfurlChess?.(friend);
           }
         }
       });

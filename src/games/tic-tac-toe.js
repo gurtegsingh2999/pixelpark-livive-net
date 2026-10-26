@@ -1,4 +1,5 @@
 import { findPath, findOpenTile, isWalkable, typeAt } from '../world.js';
+import { spectatorOffsets } from '../characters.js';
 import { recordGameResult } from '../storage.js';
 
 export class TicTacToeMiniGame {
@@ -97,10 +98,12 @@ export class TicTacToeMiniGame {
     }
     player.direction = 1; // Facing right toward board
 
-    // Auto-walk all active Player companions to spectator positions
+    // Auto-walk all active Player companions to spectator positions.
+    // They alternate above and below the player instead of stacking in one column.
     const playerComps = this.game.getCompanionsFor?.('player') || [];
+    const offsets = spectatorOffsets(playerComps.length);
     playerComps.forEach((comp, idx) => {
-      const target = { x: spot.originX - 1, y: spot.originY + 2 + idx };
+      const target = { x: spot.originX - 1, y: playerTarget.y + offsets[idx] };
       comp.fetchTarget = null;
       comp.stagedDestination = target;
       const compPath = findPath(this.game.terrain, { x: comp.x, y: comp.y }, target);

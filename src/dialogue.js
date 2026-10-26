@@ -72,7 +72,7 @@ export class DialogueManager {
     }, { capture: true });
   }
 
-  open(character, isFriend, { canPlayTicTacToe = false, canPlayCheckers = false } = {}) {
+  open(character, isFriend, { canPlayTicTacToe = false, canPlayCheckers = false, canPlayChess = false } = {}) {
     if (!character || !this.container) return;
     this.dialogueNpc = character;
     document.body.classList.add('dialogue-open');
@@ -113,6 +113,17 @@ export class DialogueManager {
             const opponent = this.dialogueNpc;
             this.close();
             this.onPlayGame?.('checkers', opponent);
+          }
+        });
+      }
+      if (canPlayChess) {
+        choices.push({
+          label: dialogueData.dialogues.friend.playChessLabel || 'Play Chess',
+          className: choices.length ? 'pill' : 'primary',
+          onClick: () => {
+            const opponent = this.dialogueNpc;
+            this.close();
+            this.onPlayGame?.('chess', opponent);
           }
         });
       }
