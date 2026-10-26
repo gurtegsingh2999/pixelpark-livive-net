@@ -8,6 +8,7 @@ import {
 import { drawAvatar, getAvatarImage, loadAvatarImage } from './avatar.js';
 import { shouldMirror, UP } from './facing.js';
 import { getAnimationProfile } from './animation.js';
+import { composeRenderTransform, resolveFx } from './effects.js';
 import sceneryAssets from '../data/nature_scenery.json' with { type: 'json' };
 
 export const TILE = 48;
@@ -15,8 +16,37 @@ export const CHARACTER_HEIGHT = TILE * 1.72;
 export const COMPANION_HEIGHT = TILE * 1.05;
 export const PET_HEIGHT = COMPANION_HEIGHT * 2; // Twice the companion size to match 256x256 rendering area
 
+const DEG_TO_RAD = Math.PI / 180;
+const RAD_TO_DEG = 180 / Math.PI;
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+/** Base (unscaled) sprite height shared by the renderer and the hitbox. */
+export function characterBaseHeight(character) {
+  const profile = getAnimationProfile(character?.recipe);
+  const is3DModel = Boolean(
+    profile.family?.startsWith('pet-') || profile.family?.startsWith('creature-')
+  );
+  if (character?.isCompanion) return is3DModel ? PET_HEIGHT : COMPANION_HEIGHT;
+  return CHARACTER_HEIGHT;
+}
+
+/**
+ * Visual height after effect scaling. Big-O grows the sprite, nameplate, and
+ * click hitbox by the same amount while leaving the camera and minimap alone.
+ */
+export function characterVisualHeight(character, fx = null) {
+  const scale = Number.isFinite(fx?.scale) ? fx.scale : 1;
+  return characterBaseHeight(character) * scale;
+}
+
+/** Companions inherit party effects from the buddy they follow. */
+export function characterEffectOwner(game, character) {
+  if (!game || !character?.isCompanion) return null;
+  if (game.player && game.player.id === character.buddyId) return game.player;
+  return (game.npcs || []).find(npc => npc.id === character.buddyId) || null;
 }
 
 export function makeTileTextures() {
@@ -160,6 +190,16 @@ export class WorldRenderer {
     ctx.save();
     ctx.translate(-camX, -camY);
 
+    // The host renderer already handed use a translated context; adapters pass
+    // a zero camera into legacy games, so `view` never applies the camera twice.
+    const view = {
+      camera: { x: 0, y: 0 },
+      width,
+      height,
+      tileSize: TILE,
+      worldSpace: true
+    };
+
     const x0 = clamp(Math.floor(camX / TILE) - 1, 0, WORLD_SIZE - 1);
     const y0 = clamp(Math.floor(camY / TILE) - 1, 0, WORLD_SIZE - 1);
     const x1 = clamp(Math.ceil((camX + width) / TILE) + 1, 0, WORLD_SIZE - 1);
@@ -172,10 +212,16 @@ export class WorldRenderer {
       }
     }
 
-    // Render ground-based mini games
-    for (const mg of game.miniGames) {
-      if (mg.renderGround) mg.renderGround(ctx, camera);
-      else if (mg.render) mg.render(ctx, { x: 0, y: 0 });
+    // Mini-game ground/object layers. The host owns sessions when present;
+    // legacy miniGames remain a fallback for older wiring.
+    if (game.miniGameHost) {
+      game.miniGameHost.renderLayer?.(ctx, 'ground', view);
+      game.miniGameHost.renderLayer?.(ctx, 'object', view);
+    } else {
+      for (const mg of game.miniGames) {
+        if (mg.renderGround) mg.renderGround(ctx, camera);
+        else if (mg.render) mg.render(ctx, { x: 0, y: 0 });
+      }
     }
 
     if (game.destination) {
@@ -208,15 +254,27 @@ export class WorldRenderer {
 
       // Find bounding zones of all currently open mini-game boards (expanded by 1 tile margin)
       const hiddenZones = [];
-      for (const mg of game.miniGames || []) {
-        if (mg.isOpen?.() && mg.activeBoard?.originX !== undefined) {
-          const size = mg.boardSize || 3;
+      if (game.miniGameHost && typeof game.miniGameHost.getHiddenZones === 'function') {
+        for (const zone of game.miniGameHost.getHiddenZones() || []) {
+          if (!zone) continue;
           hiddenZones.push({
-            minX: mg.activeBoard.originX - 1,
-            maxX: mg.activeBoard.originX + size,
-            minY: mg.activeBoard.originY - 1,
-            maxY: mg.activeBoard.originY + size
+            minX: zone.x - 1,
+            maxX: zone.x + zone.width,
+            minY: zone.y - 1,
+            maxY: zone.y + zone.height
           });
+        }
+      } else {
+        for (const mg of game.miniGames || []) {
+          if (mg.isOpen?.() && mg.activeBoard?.originX !== undefined) {
+            const size = mg.boardSize || 3;
+            hiddenZones.push({
+              minX: mg.activeBoard.originX - 1,
+              maxX: mg.activeBoard.originX + size,
+              minY: mg.activeBoard.originY - 1,
+              maxY: mg.activeBoard.originY + size
+            });
+          }
         }
       }
 
@@ -254,7 +312,27 @@ export class WorldRenderer {
       }
     }
 
+    // Overlay layer (tokens, hover highlights) sits above characters.
+    if (game.miniGameHost) {
+      game.miniGameHost.renderLayer?.(ctx, 'overlay', view);
+    }
+
+    // Speech bubbles are world-space and follow moving actors.
+    if (game.speechBubbles) {
+      game.speechBubbles.render?.(ctx, {
+        tileSize: TILE,
+        worldSpace: true,
+        width,
+        height
+      });
+    }
+
     ctx.restore();
+
+    // HUD layer is screen-space and therefore drawn after restoring the camera.
+    if (game.miniGameHost) {
+      game.miniGameHost.renderLayer?.(ctx, 'hud', view);
+    }
 
     const hovered = game.hovered || game.selected;
     if (hovered) this.drawNameplate(game, hovered);
@@ -319,7 +397,10 @@ export class WorldRenderer {
     const isCompanion = Boolean(character.isCompanion);
     const profile = getAnimationProfile(character.recipe);
     const is3DModel = Boolean(profile.family?.startsWith('pet-') || profile.family?.startsWith('creature-'));
-    const height = isCompanion ? (is3DModel ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
+    const baseHeight = characterBaseHeight(character);
+    const nowMs = (game.time || 0) * 1000;
+    const fx = resolveFx(character, nowMs, characterEffectOwner(game, character));
+    const height = characterVisualHeight(character, fx);
     const width = height;
     const position = game.interpolated(character);
     const footX = (position.x + 0.5) * TILE;
@@ -337,28 +418,88 @@ export class WorldRenderer {
 
     // Determine family-specific procedural transform (both idle AND movement locomotion)
     const animTransform = profile.getTransform
-      ? profile.getTransform(animTime, height, {
+      ? profile.getTransform(animTime, baseHeight, {
           moving: Boolean(character.moving),
           movingT,
           direction: character.direction
         })
       : { translateY: 0, translateX: 0, rotate: 0, scaleX: 1, scaleY: 1, alpha: 1, shadowScale: 1 };
 
-    const tx = animTransform.translateX || 0;
-    const ty = (animTransform.translateY || 0) - cheerHop;
+    // One composition point: animation transform -> effect channels -> motion.
+    // Effect rotate values are authored in degrees; animation rotate is radians.
+    const composed = composeRenderTransform({
+      scale: 1,
+      alpha: animTransform.alpha ?? 1,
+      offsetX: animTransform.translateX || 0,
+      offsetY: (animTransform.translateY || 0) - cheerHop,
+      rotate: (animTransform.rotate || 0) * RAD_TO_DEG
+    }, fx);
+
+    let offsetX = composed.offsetX;
+    let offsetY = composed.offsetY;
+    let rotate = composed.rotate * DEG_TO_RAD;
+    let alpha = composed.alpha;
+
+    if (fx.motionId === 'float' && fx.motion) {
+      const period = Math.max(1, Number(fx.motion.periodMs) || 2400);
+      const amplitude = Number(fx.motion.amplitude) || 0;
+      offsetY -= Math.abs(Math.sin((nowMs / period) * Math.PI * 2)) * amplitude;
+    } else if (fx.motionId === 'sway' && fx.motion) {
+      const period = Math.max(1, Number(fx.motion.periodMs) || 2200);
+      const degrees = Number(fx.motion.rotateDeg) || 0;
+      rotate += Math.sin((nowMs / period) * Math.PI * 2) * degrees * DEG_TO_RAD;
+    }
+
+    // Teleport is cosmetic: the step already passed collision checks in Game.
+    if (character.motionStyle === 'teleport' && character.moving && character.duration > 0) {
+      const progress = clamp(character.elapsed / character.duration, 0, 1);
+      if (progress > 0.35 && progress < 0.65) alpha *= 0.12;
+    }
+
     const scaleX = animTransform.scaleX ?? 1;
     const scaleY = animTransform.scaleY ?? 1;
-    const rotate = animTransform.rotate || 0;
-    const alpha = animTransform.alpha ?? 1;
     const shadowScale = animTransform.shadowScale ?? 1;
+    const drawX = footX + offsetX;
+    const top = footY - height + offsetY;
 
-    const top = footY - height + ty;
+    // Minimal trail (one fading afterimage at the previous tile) to keep the
+    // per-frame cost bounded. Aura/outline are simple canvas primitives.
+    if (Array.isArray(fx.trail) && fx.trail.length && character.moving) {
+      const trail = fx.trail[0] || {};
+      const fromX = (character.fromX + 0.5) * TILE;
+      const fromY = (character.fromY + 1) * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = trail.color || '#e5f4a5';
+      ctx.beginPath();
+      ctx.ellipse(fromX, fromY - height * 0.45, width * 0.28, height * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (Array.isArray(fx.aura) && fx.aura.length) {
+      for (const aura of fx.aura) {
+        if (!aura) continue;
+        const radius = Number(aura.radius) || 18;
+        const pulseMs = Number(aura.pulseMs);
+        const pulse = pulseMs > 0
+          ? 0.75 + 0.25 * Math.sin((nowMs / pulseMs) * Math.PI * 2)
+          : 1;
+        ctx.save();
+        ctx.globalAlpha = clamp(0.18 * (Number(aura.weight) || 1) * pulse, 0, 1);
+        ctx.fillStyle = aura.color || '#e5f4a5';
+        ctx.beginPath();
+        ctx.ellipse(drawX, footY - height * 0.45, radius, radius * 1.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
 
     // Holographic projection glow on the ground for floating digi-buddies ('gaze')
     if (animTransform.hologramGlow) {
       ctx.save();
       ctx.beginPath();
-      ctx.ellipse(footX + tx * 0.5, footY - 3, TILE * 0.28 * shadowScale, TILE * 0.10 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.ellipse(footX + offsetX * 0.5, footY - 3, TILE * 0.28 * shadowScale, TILE * 0.10 * shadowScale, 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(102, 217, 232, 0.26)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(153, 233, 242, 0.55)';
@@ -410,14 +551,15 @@ export class WorldRenderer {
     if (image) {
       const flip = shouldMirror(character.direction);
       ctx.save();
-      if (tx !== 0 || rotate !== 0 || scaleX !== 1 || scaleY !== 1) {
-        // Transform around character anchor (footX + tx, footY) so compression squashes downward toward the ground
-        ctx.translate(footX + tx, footY);
+      if (offsetX !== 0 || rotate !== 0 || scaleX !== 1 || scaleY !== 1) {
+        // Transform around the character's foot anchor so effects and squash
+        // both grow/shrink toward the ground.
+        ctx.translate(drawX, footY);
         if (rotate !== 0) ctx.rotate(flip ? -rotate : rotate);
         if (scaleX !== 1 || scaleY !== 1) ctx.scale(scaleX, scaleY);
-        ctx.translate(-(footX + tx), -footY);
+        ctx.translate(-drawX, -footY);
       }
-      drawAvatar(ctx, image, footX + tx - width / 2, top, width, height, flip, alpha);
+      drawAvatar(ctx, image, drawX - width / 2, top, width, height, flip, clamp(alpha, 0, 1));
       ctx.restore();
     } else {
       const frames = profile.frames || ['default', 'blink'];
@@ -426,19 +568,29 @@ export class WorldRenderer {
       }
       ctx.fillStyle = 'rgba(20, 30, 22, 0.8)';
       ctx.beginPath();
-      ctx.arc(footX, footY - height * 0.45, height * 0.3, 0, Math.PI * 2);
+      ctx.arc(drawX, footY - height * 0.45, height * 0.3, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(229, 244, 165, 0.5)';
       ctx.stroke();
+    }
+
+    if (fx.outline) {
+      ctx.save();
+      ctx.globalAlpha = clamp(Number(fx.outline.alpha) || 0.3, 0, 1);
+      ctx.strokeStyle = fx.outline.color || '#e5f4a5';
+      ctx.lineWidth = Number(fx.outline.width) || 1;
+      ctx.beginPath();
+      ctx.ellipse(drawX, footY - height * 0.48, width * 0.34, height * 0.46, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
   drawNameplate(game, character) {
     const { ctx } = this;
     const isCompanion = Boolean(character.isCompanion);
-    const profile = getAnimationProfile(character.recipe);
-    const is3DModel = Boolean(profile.family?.startsWith('pet-') || profile.family?.startsWith('creature-'));
-    const height = isCompanion ? (is3DModel ? PET_HEIGHT : COMPANION_HEIGHT) : CHARACTER_HEIGHT;
+    const fx = resolveFx(character, (game.time || 0) * 1000, characterEffectOwner(game, character));
+    const height = characterVisualHeight(character, fx);
     const position = game.interpolated(character);
     const footX = (position.x + 0.5) * TILE - game.camera.x;
     const footY = (position.y + 1) * TILE - game.camera.y;
@@ -452,7 +604,7 @@ export class WorldRenderer {
     const width = textWidth + 16;
     const boxHeight = 22;
     const x = clamp(footX - width / 2, 6, game.width - width - 6);
-    const y = footY - height - 24;
+    const y = footY - height - 24 + (fx.offsetY || 0);
     ctx.fillStyle = 'rgba(10, 17, 12, 0.9)';
     ctx.strokeStyle = 'rgba(163, 210, 139, 0.35)';
     ctx.lineWidth = 1;

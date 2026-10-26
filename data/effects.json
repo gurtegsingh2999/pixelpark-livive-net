@@ -1,0 +1,496 @@
+{
+  "schemaVersion": 1,
+  "slots": {
+    "head": { "id": "head", "label": "Head", "capacity": 1 },
+    "face": { "id": "face", "label": "Face", "capacity": 1 },
+    "hand": { "id": "hand", "label": "Hand", "capacity": 1 },
+    "back": { "id": "back", "label": "Back", "capacity": 1 },
+    "feet": { "id": "feet", "label": "Feet", "capacity": 1 },
+    "charm": { "id": "charm", "label": "Charm", "capacity": 2 },
+    "buddy": { "id": "buddy", "label": "Buddy", "capacity": 1 }
+  },
+  "composition": {
+    "channels": ["scale", "alpha", "offsetX", "offsetY", "rotate", "tint", "aura", "trail", "outline"],
+    "operations": {
+      "scale": "multiply",
+      "alpha": "multiply",
+      "offsetX": "add",
+      "offsetY": "add",
+      "rotate": "add",
+      "tint": "last",
+      "aura": "append",
+      "trail": "append",
+      "outline": "last",
+      "stepDurationScale": "multiply",
+      "coinBonus": "add"
+    },
+    "defaults": {
+      "scale": 1,
+      "alpha": 1,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotate": 0,
+      "tint": null,
+      "aura": [],
+      "trail": [],
+      "outline": null,
+      "stepDurationScale": 1,
+      "coinBonus": 0
+    },
+    "entryOrder": ["self", "party"],
+    "note": "Own gear applies first, then party gear inherited from the owner. Scale, alpha and stepDurationScale multiply; offsetX/Y, rotate and coinBonus add; tint and outline use the last non-null value; aura and trail append in entry order."
+  },
+  "transitions": {
+    "defaults": {
+      "equipMs": 220,
+      "unequipMs": 180,
+      "easing": "ease-out"
+    }
+  },
+  "motions": {
+    "none": {
+      "id": "none",
+      "label": "Still",
+      "priority": 0
+    },
+    "float": {
+      "id": "float",
+      "label": "Float",
+      "priority": 40,
+      "amplitude": 3,
+      "periodMs": 2400,
+      "easing": "sine"
+    },
+    "sway": {
+      "id": "sway",
+      "label": "Sway",
+      "priority": 20,
+      "amplitude": 1,
+      "rotateDeg": 2.5,
+      "periodMs": 2200,
+      "easing": "sine"
+    },
+    "teleport": {
+      "id": "teleport",
+      "label": "Blink",
+      "priority": 100,
+      "blinkMs": 120,
+      "gapMs": 80,
+      "dust": true
+    }
+  },
+  "effects": {
+    "big-o": {
+      "id": "big-o",
+      "itemId": "big-o-bracelet",
+      "name": "Big-O Bracelet",
+      "slot": "charm",
+      "target": "self",
+      "trigger": "equip",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1.5,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": -2,
+        "rotate": 0,
+        "tint": null,
+        "aura": [],
+        "trail": [],
+        "outline": null
+      },
+      "motion": null,
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["big-o.pop", "big-o.scale"],
+      "transition": {
+        "equipMs": 320,
+        "unequipMs": 240,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "everything about you is 1.5x bigger.",
+        "badge": "1.5x",
+        "icon": "💪"
+      }
+    },
+    "chamo": {
+      "id": "chamo",
+      "itemId": "chamo-clip",
+      "name": "Chamo Clip",
+      "slot": "face",
+      "target": "self",
+      "trigger": "always",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1,
+        "alpha": 0.1,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotate": 0,
+        "tint": null,
+        "aura": [],
+        "trail": [],
+        "outline": {
+          "color": "#d9fbe5",
+          "width": 1,
+          "alpha": 0.35
+        }
+      },
+      "motion": null,
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["chamo.fade", "chamo.outline"],
+      "transition": {
+        "equipMs": 260,
+        "unequipMs": 220,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "almost invisible, but still yourself.",
+        "badge": "0.1x",
+        "icon": "🫥"
+      }
+    },
+    "tricorder": {
+      "id": "tricorder",
+      "itemId": "teleport-tricorder",
+      "name": "Teleport Tricorder",
+      "slot": "hand",
+      "target": "self",
+      "trigger": "move",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotate": 0,
+        "tint": null,
+        "aura": [],
+        "trail": [],
+        "outline": null
+      },
+      "motion": "teleport",
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["tricorder.blink", "tricorder.spark"],
+      "transition": {
+        "equipMs": 120,
+        "unequipMs": 120,
+        "easing": "linear"
+      },
+      "ui": {
+        "summary": "blink from tile to tile. collision still applies.",
+        "badge": "blink",
+        "icon": "🛸"
+      }
+    },
+    "hover-halo": {
+      "id": "hover-halo",
+      "itemId": "hover-halo",
+      "name": "Hover Halo",
+      "slot": "head",
+      "target": "self",
+      "trigger": "always",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": -4,
+        "rotate": 0,
+        "tint": null,
+        "aura": [
+          {
+            "key": "halo.glow",
+            "color": "#ffe28a",
+            "radius": 20,
+            "pulseMs": 1600,
+            "blend": "screen"
+          }
+        ],
+        "trail": [],
+        "outline": null
+      },
+      "motion": "float",
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["halo.float", "halo.glow"],
+      "transition": {
+        "equipMs": 240,
+        "unequipMs": 200,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "hover a little above the grass.",
+        "badge": "float",
+        "icon": "😇"
+      }
+    },
+    "prism-pin": {
+      "id": "prism-pin",
+      "itemId": "prism-pin",
+      "name": "Prism Pin",
+      "slot": "charm",
+      "target": "self",
+      "trigger": "always",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1,
+        "alpha": 1,
+        "offsetX": 1,
+        "offsetY": -1,
+        "rotate": 2,
+        "tint": "#b388ff",
+        "aura": [],
+        "trail": [],
+        "outline": null
+      },
+      "motion": "sway",
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["prism.tint-cycle"],
+      "transition": {
+        "equipMs": 300,
+        "unequipMs": 260,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "a slow rainbow shimmer.",
+        "badge": "shimmer",
+        "icon": "💎"
+      }
+    },
+    "echo-bell": {
+      "id": "echo-bell",
+      "itemId": "echo-bell",
+      "name": "Echo Bell",
+      "slot": "charm",
+      "target": "self",
+      "trigger": "move",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotate": 0,
+        "tint": null,
+        "aura": [],
+        "trail": [
+          {
+            "key": "echo.afterimage",
+            "color": "#c77dff",
+            "count": 3,
+            "spacingMs": 140,
+            "fade": 0.5
+          }
+        ],
+        "outline": null
+      },
+      "motion": null,
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["echo.afterimage", "echo.chime"],
+      "transition": {
+        "equipMs": 200,
+        "unequipMs": 180,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "leave a few fading echoes when you move.",
+        "badge": "echo",
+        "icon": "🔔"
+      }
+    },
+    "bouncy-boots": {
+      "id": "bouncy-boots",
+      "itemId": "bouncy-boots",
+      "name": "Bouncy Boots",
+      "slot": "feet",
+      "target": "self",
+      "trigger": "move",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotate": 0,
+        "tint": null,
+        "aura": [],
+        "trail": [
+          {
+            "key": "boots.dust",
+            "color": "#e9c46a",
+            "count": 4,
+            "lifeMs": 400
+          }
+        ],
+        "outline": null
+      },
+      "motion": null,
+      "stats": {
+        "stepDurationScale": 0.75,
+        "coinBonus": 0
+      },
+      "vfx": ["boots.squash", "boots.dust"],
+      "transition": {
+        "equipMs": 180,
+        "unequipMs": 160,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "walk 25% faster with a bouncy landing.",
+        "badge": "bouncy",
+        "icon": "👟"
+      }
+    },
+    "buddy-cape": {
+      "id": "buddy-cape",
+      "itemId": "buddy-cape",
+      "name": "Buddy Cape",
+      "slot": "back",
+      "target": "party",
+      "trigger": "always",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1.1,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotate": 0,
+        "tint": "#4cc9f0",
+        "aura": [
+          {
+            "key": "cape.party-link",
+            "color": "#4cc9f0",
+            "radius": 14,
+            "blend": "screen"
+          }
+        ],
+        "trail": [],
+        "outline": null
+      },
+      "motion": null,
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["cape.party-link"],
+      "transition": {
+        "equipMs": 280,
+        "unequipMs": 220,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "your party pals get a little bigger and bluer.",
+        "badge": "party",
+        "icon": "🦸"
+      }
+    },
+    "glowworm-jar": {
+      "id": "glowworm-jar",
+      "itemId": "glowworm-jar",
+      "name": "Glowworm Jar",
+      "slot": "hand",
+      "target": "self",
+      "trigger": "always",
+      "duration": "permanent",
+      "stacking": "unique",
+      "visual": {
+        "scale": 1,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotate": 0,
+        "tint": null,
+        "aura": [
+          {
+            "key": "glowworm.pulse",
+            "color": "#b9fbc0",
+            "radius": 24,
+            "pulseMs": 1500,
+            "blend": "screen"
+          }
+        ],
+        "trail": [],
+        "outline": null
+      },
+      "motion": null,
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 0
+      },
+      "vfx": ["glowworm.pulse"],
+      "transition": {
+        "equipMs": 260,
+        "unequipMs": 200,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "a soft pulsing glow follows you.",
+        "badge": "glow",
+        "icon": "🫙"
+      }
+    },
+    "lucky-clover": {
+      "id": "lucky-clover",
+      "itemId": "lucky-clover",
+      "name": "Lucky Clover",
+      "slot": "charm",
+      "target": "self",
+      "trigger": "reward",
+      "duration": "permanent",
+      "stacking": "stack",
+      "visual": {
+        "scale": 1,
+        "alpha": 1,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotate": 0,
+        "tint": "#7bd389",
+        "aura": [],
+        "trail": [],
+        "outline": null
+      },
+      "motion": null,
+      "stats": {
+        "stepDurationScale": 1,
+        "coinBonus": 1
+      },
+      "vfx": ["clover.sparkle"],
+      "transition": {
+        "equipMs": 200,
+        "unequipMs": 160,
+        "easing": "ease-out"
+      },
+      "ui": {
+        "summary": "+1 coin whenever you earn a reward.",
+        "badge": "+1 coin",
+        "icon": "🍀"
+      }
+    }
+  }
+}

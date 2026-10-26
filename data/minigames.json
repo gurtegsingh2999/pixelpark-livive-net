@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "miniGames": {
+    "tic-tac-toe": {
+      "id": "tic-tac-toe",
+      "title": "Tic-Tac-Toe",
+      "kind": "board",
+      "itemId": "tic-tac-toe",
+      "dialogueKey": "ttt",
+      "rewardKey": "tic-tac-toe",
+      "players": 2,
+      "seats": 2,
+      "board": {
+        "width": 3,
+        "height": 3,
+        "margin": 1,
+        "blocksMovement": true,
+        "hiddenZones": []
+      },
+      "input": {
+        "mode": "tile",
+        "actionLabel": "play"
+      },
+      "renderLayers": ["ground", "object", "overlay"],
+      "timing": {
+        "openMs": 1050,
+        "closeMs": 840,
+        "turnMs": 800
+      },
+      "persist": false,
+      "activity": "turn-based"
+    },
+    "checkers": {
+      "id": "checkers",
+      "title": "Checkers",
+      "kind": "board",
+      "itemId": "checkers",
+      "dialogueKey": "checkers",
+      "rewardKey": "checkers",
+      "players": 2,
+      "seats": 2,
+      "board": {
+        "width": 8,
+        "height": 8,
+        "margin": 1,
+        "blocksMovement": true,
+        "hiddenZones": []
+      },
+      "input": {
+        "mode": "tile",
+        "actionLabel": "move"
+      },
+      "renderLayers": ["ground", "object", "overlay"],
+      "timing": {
+        "openMs": 900,
+        "closeMs": 720,
+        "turnMs": 900
+      },
+      "persist": false,
+      "activity": "turn-based"
+    },
+    "chess": {
+      "id": "chess",
+      "title": "Chess",
+      "kind": "board",
+      "itemId": "chess",
+      "dialogueKey": "chess",
+      "rewardKey": "chess",
+      "players": 2,
+      "seats": 2,
+      "board": {
+        "width": 8,
+        "height": 8,
+        "margin": 1,
+        "blocksMovement": true,
+        "hiddenZones": []
+      },
+      "input": {
+        "mode": "tile",
+        "actionLabel": "move"
+      },
+      "renderLayers": ["ground", "object", "overlay"],
+      "timing": {
+        "openMs": 900,
+        "closeMs": 720,
+        "turnMs": 1000
+      },
+      "persist": false,
+      "activity": "turn-based"
+    },
+    "fetch": {
+      "id": "fetch",
+      "title": "Fetch",
+      "kind": "activity",
+      "itemId": "ball",
+      "dialogueKey": "fetch",
+      "rewardKey": "fetch",
+      "players": 1,
+      "seats": 1,
+      "board": null,
+      "input": {
+        "mode": "world",
+        "actionLabel": "throw"
+      },
+      "renderLayers": ["object", "overlay"],
+      "timing": {
+        "openMs": 0,
+        "closeMs": 0,
+        "turnMs": 0
+      },
+      "persist": false,
+      "activity": "continuous"
+    }
+  }
+}

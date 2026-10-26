@@ -428,3 +428,39 @@ behavior = priority, when, target, states{ action, params, duration, next, trans
 actor = behavior, state, target, elapsed, lockedBy
 runtime = choose > arbitrate > run state > advance/complete/interrupt
 ```
+
+---
+
+## 13. Implementation status (v1 delivery)
+
+**Delivered**
+
+- Mini-game host contract, registry, staging, settlement, and metadata for all four games.
+- Tic-Tac-Toe, checkers, chess, and fetch adapters; single-session rule; friend-gated table games.
+- Effect schema/runtime, 10 effect items, equip/unequip UI, save v2 migration, Big-O/Chamo/Teleport visuals.
+- Behavior schema/runtime/arbiter/cooldowns, greet, auto-friend, style-specific follow, NPC speech bubbles, NPC-vs-NPC Tic-Tac-Toe.
+- Debug controls for effect grants, NPC game, host state, and behavior summary.
+- Tests: **220 passing**, plus data-validation, acceptance, and v1→v2 save-fixture suites.
+
+**Fixed during live browser verification**
+
+- Negative first-frame delta stopped the game loop now clamped.
+- Equip timestamps used `Date.now()` while rendering used `game.time`; effects never faded in — clocks aligned.
+- Host called `game.getCompanionsFor` unbound; game starts crashed — resolver bound.
+- Fetch treated its companion as a parked board participant; fetch froze — boardless activities no longer claim companions.
+- NPC Tic-Tac-Toe did not stage seat 0, placed the board around the human, and the human blocked the seat — NPC placement/staging and seat blocking fixed; NPC TTT driver added.
+- Debug NPC games picked far-apart neighbours; now picks the closest pair.
+
+**Known gaps / follow-ups**
+
+- Visual polish for the seven non-headline effects is functional but minimal (aura/trail/tint).
+- Fetch auto-packs on ball return without a reward settlement.
+- NPC-vs-NPC checkers/chess remain deferred.
+- Behaviors use the existing animation families; style-specific follow cadence is data-tunable but not yet bespoke art.
+- No audio, reduced-motion setting, or live-session persistence (as scoped).
+
+**Tester entry points**
+
+- Backpack: equip/unequip effects, throw ball, unfurl table games.
+- Debug: grant all effects, trigger NPC Tic-Tac-Toe, inspect host/behavior state.
+- Console: `window.playPark.getDebugState()`, `window.playPark.host`, `window.playPark.behaviorRuntime`.

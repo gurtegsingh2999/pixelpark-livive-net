@@ -12,39 +12,53 @@ import {
   decodeTerrain,
   makeSeed,
   isWalkable,
-  findOpenTile
+  findOpenTile,
+  findPath
 } from './world.js';
 import { PLAYER_NAMES, COMPANION_NAMES, pickName, pickVibe } from './names.js';
-import { serializeSave, saveState, loadSave, clearSave } from './storage.js';
+import { serializeSave, saveState, loadSave, clearSave, recordGameResult } from './storage.js';
 import { DialogueManager } from './dialogue.js';
-import { createStarterInventory } from './inventory.js';
-import { FetchMiniGame } from './games/fetch.js';
-import { TicTacToeMiniGame } from './games/tic-tac-toe.js';
-import { CheckersMiniGame } from './games/checkers.js';
-import { ChessMiniGame } from './games/chess.js';
+import { createItemInstance, createStarterInventory, normalizeInventory } from './inventory.js';
 import { SetupWizard } from './ui/wizard.js';
 import { PanelsUI } from './ui/panels.js';
+import { MiniGameHost } from './minigames/host.js';
+import { registerContractGames } from './games/contract-adapters.js';
+import { buildAbandonPrompt, dialogueForMeta } from './minigames/settlement.js';
+import { SpeechBubbles } from './ui/speech.js';
+import { BehaviorRuntime } from './behavior/runtime.js';
+import { CooldownStore } from './behavior/cooldowns.js';
+import {
+  bridgeBehaviorEvents,
+  createNpcGameAdapter,
+  createSocialActions
+} from './behavior/actions/social.js';
+import { EFFECT_CATALOG } from './effects.js';
 import engineConfig from '../data/engine_config.json' with { type: 'json' };
 import dialogueData from '../data/dialogues.json' with { type: 'json' };
+import behaviorData from '../data/behaviors.json' with { type: 'json' };
+import miniGamesData from '../data/minigames.json' with { type: 'json' };
 import { rollReward, applyReward } from './rewards.js';
 
 const MAX_NPCS = engineConfig.crowd.maxNpcs;
 const DEFAULT_CROWD = engineConfig.crowd.defaultCount;
+const DEFAULT_STEP_MS = 180;
 
 const $ = id => document.getElementById(id);
 
 let game = null;
 let draft = null;
 let dialogue = null;
-let fetchGame = null;
-let tttGame = null;
-let checkersGame = null;
-let chessGame = null;
+let host = null;
+let bubbles = null;
+let behaviorRuntime = null;
+let npcGameAdapter = null;
 let wizard = null;
 let panels = null;
 let friends = new Set();
 let toastTimer = 0;
 let entered = false;
+let lastFrameAt = 0;
+let delegated = { host: false, runtime: false, bubbles: false };
 
 function makeId(prefix) {
   const value = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2, 10);
@@ -53,6 +67,22 @@ function makeId(prefix) {
 
 function randomFrom(list) {
   return list[Math.floor(Math.random() * list.length)];
+}
+
+function msToSeconds(ms) {
+  const value = Number(ms);
+  return Number.isFinite(value) && value > 0 ? value / 1000 : DEFAULT_STEP_MS / 1000;
+}
+
+function resolveCharacter(id) {
+  if (!game || id == null) return null;
+  if (id === 'player' || id === game.player?.id) return game.player;
+  return game.getNpc?.(id) || game.companions?.find(companion => companion.id === id) || null;
+}
+
+function behaviorActors() {
+  if (!game) return [];
+  return [...(game.npcs || []), ...(game.companions || [])];
 }
 
 function showToast(message) {
@@ -78,33 +108,211 @@ function onFriendshipChanged(npcId, isFriend) {
 function onDialogueEnded() {
   game?.select(null);
   game?.resumeFromDialogue();
+  behaviorRuntime?.setDialogue(false);
   panels?.updateFriendsUI();
   saveNow();
 }
 
-function onPlayGame(type, opponent) {
-  if (type === 'tic-tac-toe') {
-    tttGame?.unfurlBoard(opponent);
-  } else if (type === 'checkers') {
-    checkersGame?.unfurlBoard(opponent);
-  } else if (type === 'chess') {
-    chessGame?.unfurlBoard(opponent);
-  }
+/** Table games are friends-only; metadata supplies the item and label. */
+function tableGamesFor(opponent) {
+  if (!host || !game?.player) return [];
+  const isFriend = Boolean(opponent && friends.has(opponent.id));
+  const owned = new Set((game.player.inventory || []).map(item => item?.id).filter(Boolean));
+  return [...host.registry.values()]
+    .filter(entry => entry.meta.kind === 'board')
+    .filter(entry => owned.has(entry.meta.itemId))
+    .map(entry => ({
+      id: entry.meta.id,
+      label: entry.meta.title || entry.meta.id,
+      enabled: isFriend
+    }));
 }
 
 function openDialogue(npc) {
   if (!npc) return;
   panels?.closeAllPanels();
   game.select(npc.id);
+  behaviorRuntime?.setDialogue(true);
   const isFriend = friends.has(npc.id);
-  const hasTTT = Boolean(game?.player?.inventory?.some(i => i.id === 'tic-tac-toe'));
-  const hasCheckers = Boolean(game?.player?.inventory?.some(i => i.id === 'checkers'));
-  const hasChess = Boolean(game?.player?.inventory?.some(i => i.id === 'chess'));
-  dialogue.open(npc, isFriend, {
-    canPlayTicTacToe: isFriend && hasTTT,
-    canPlayCheckers: isFriend && hasCheckers,
-    canPlayChess: isFriend && hasChess
+  dialogue.open(npc, isFriend, { games: tableGamesFor(npc) });
+}
+
+function refreshMiniGameFlags() {
+  if (!game) return;
+  const participants = new Set(host?.session?.participants || []);
+  for (const npc of game.npcs || []) npc.inMiniGame = participants.has(npc);
+  for (const companion of game.companions || []) companion.inMiniGame = participants.has(companion);
+  if (game.player) game.player.inMiniGame = participants.has(game.player);
+}
+
+function npcOwnsSession() {
+  const session = host?.session;
+  return Boolean(session && session.seats?.length && session.seats.every(seat => seat.controller === 'ai'));
+}
+
+function packUpNpcSession(reason = 'packed-up') {
+  const token = npcGameAdapter?.activeToken?.();
+  if (token) npcGameAdapter.finish(token, { reason });
+  else if (host?.isOpen()) host.close({ reason, settle: false, record: false, reward: false });
+  refreshMiniGameFlags();
+}
+
+function packUpGame(gameId = null) {
+  if (!host?.isOpen()) return false;
+  const session = host.session;
+  if (gameId && session.meta.id !== gameId) return false;
+  if (npcOwnsSession()) {
+    packUpNpcSession('packed-up');
+  } else {
+    host.close({ reason: 'packed-up', settle: false });
+    refreshMiniGameFlags();
+  }
+  showToast(`${session.meta.title || 'Game'} packed up.`);
+  return true;
+}
+
+function onPlayGame(gameId, opponent) {
+  if (!host || !game?.player) return;
+  const meta = host.getMeta(gameId);
+  if (!meta) {
+    showToast('That game is not unpacked yet.');
+    return;
+  }
+
+  if (host.isOpen()) {
+    if (npcOwnsSession()) {
+      packUpNpcSession('player-start');
+    } else if (host.activeGameId === gameId) {
+      showToast(`${meta.title} is already open. Pack it up first.`);
+      return;
+    } else {
+      showToast(`${host.session.meta.title || 'A game'} is already open. Pack it up first.`);
+      return;
+    }
+  }
+
+  const friend = opponent || friendNpcs()[0] || null;
+  if (!friend) {
+    showToast('Make a friend first — table games are for friends.');
+    return;
+  }
+
+  const result = host.start(gameId, {
+    seats: [
+      { character: game.player, controller: 'human', role: 'player' },
+      { character: friend, controller: 'ai', role: 'opponent' }
+    ],
+    controllers: ['human', 'ai'],
+    options: {
+      onAbandonPrompt: (onConfirm, onCancel) => showAbandonPrompt(meta, friend, onConfirm, onCancel)
+    }
   });
+
+  if (!result.ok) {
+    showToast(result.message || `${meta.title} could not open here.`);
+    return;
+  }
+  refreshMiniGameFlags();
+  panels?.updateDebugUI?.();
+}
+
+function facingTile(character, distance = 3) {
+  const directions = [
+    { dx: 0, dy: 1 },
+    { dx: 1, dy: 0 },
+    { dx: 0, dy: -1 },
+    { dx: -1, dy: 0 }
+  ];
+  const delta = directions[character?.direction] || directions[0];
+  return {
+    x: Math.max(0, Math.min(63, (character?.x ?? 32) + delta.dx * distance)),
+    y: Math.max(0, Math.min(63, (character?.y ?? 32) + delta.dy * distance))
+  };
+}
+
+function onThrowBall({ color } = {}) {
+  if (!host || !game?.player) return;
+  if (host.isOpen()) {
+    showToast(`${host.session.meta.title || 'A game'} is already open. Pack it up first.`);
+    return;
+  }
+  const result = host.start('fetch', {
+    seats: [{ character: game.player, controller: 'human', role: 'player' }],
+    controllers: ['human'],
+    options: {
+      targetTile: facingTile(game.player, 3),
+      color,
+      onAbandonPrompt: (onConfirm, onCancel) => showAbandonPrompt(
+        host.getMeta('fetch'),
+        game.player,
+        onConfirm,
+        onCancel
+      )
+    }
+  });
+  if (!result.ok) showToast(result.message || 'Could not throw the ball.');
+}
+
+function showAbandonPrompt(meta, opponent, onConfirm, onCancel) {
+  if (!meta) return;
+  const spec = dialogueForMeta(meta, dialogueData);
+  const prompt = buildAbandonPrompt({
+    meta,
+    opponentName: opponent?.name || 'Your friend',
+    dialogueSpec: spec
+  });
+  const choices = prompt.choices.map(choice => ({
+    label: choice.label,
+    className: choice.className,
+    onClick: () => {
+      dialogue.close();
+      if (choice.action === 'abandon') {
+        if (host?.isOpen()) {
+          host.close({ reason: 'abandoned', outcome: 'abandoned', record: false, reward: false });
+          refreshMiniGameFlags();
+        } else {
+          onConfirm?.();
+        }
+      } else {
+        onCancel?.();
+      }
+    }
+  }));
+  dialogue.openCustomBeat(opponent && opponent.name ? opponent : { name: 'Game' }, prompt.text, choices);
+}
+
+function handleGameEnd(payload) {
+  const { meta, outcome, settlement, dialogue: beat, session } = payload;
+  const opponentSeat = session?.seats?.find(seat => seat.controller !== 'human' && seat.character !== game?.player);
+  const opponent = opponentSeat?.character
+    || (settlement?.opponentId ? resolveCharacter(settlement.opponentId) : null)
+    || { name: settlement?.opponentName || 'Your friend' };
+
+  let text = beat?.text || `${meta?.title || 'Game'} finished.`;
+  const notices = Array.isArray(settlement?.notifications) ? settlement.notifications : [];
+  if (notices.length) {
+    text += `\nRewards: ${notices.join(' · ')}`;
+    showToast(`Rewards: ${notices.join(' · ')}`);
+  }
+  if (outcome === 'win' && game?.player) game.triggerCheer('player');
+
+  const choices = (beat?.choices || []).map(choice => ({
+    label: choice.label,
+    className: choice.className,
+    onClick: () => {
+      dialogue.close();
+      if (choice.action === 'play_again') {
+        if (host?.isOpen()) host.close({ reason: 'play-again', settle: false });
+        refreshMiniGameFlags();
+        onPlayGame(meta.id, opponentSeat?.character || opponent);
+      } else {
+        packUpGame(meta.id);
+      }
+    }
+  }));
+
+  dialogue.openCustomBeat(opponent, text, choices);
+  panels?.updateDebugUI?.();
 }
 
 function makeDraft() {
@@ -156,6 +364,13 @@ function openWizard({ fresh = false } = {}) {
     friends = new Set();
   }
 
+  if (host?.isOpen()) {
+    if (npcOwnsSession()) packUpNpcSession('new-park');
+    else host.close({ reason: 'new-park', settle: false, record: false, reward: false });
+  }
+  refreshMiniGameFlags();
+  bubbles?.clear();
+
   if (dialogue?.isOpen()) dialogue.close();
   panels?.closeAllPanels();
   entered = false;
@@ -164,120 +379,6 @@ function openWizard({ fresh = false } = {}) {
   panels?.updateFriendsUI();
   wizard.setDraft(draft);
   wizard.open({ fresh });
-}
-
-function onTTTGameEnd(winner, opponent) {
-  if (!opponent) return;
-  const tttSpecs = dialogueData.dialogues.ttt;
-  let outcome = 'draw';
-  if (winner === 'X') outcome = 'win';
-  else if (winner === 'O') outcome = 'loss';
-
-  let winText = winner === 'X' ? tttSpecs.win : (winner === 'O' ? tttSpecs.loss : tttSpecs.draw);
-
-  // Grant rewards if outcome rolled
-  const reward = rollReward(game, 'tic-tac-toe', outcome);
-  if (reward) {
-    const notices = applyReward(game, reward);
-    if (notices.length) {
-      winText += `\nRewards: ${notices.join(' · ')}`;
-      showToast(`Rewards: ${notices.join(' · ')}`);
-      if (winner === 'X') {
-        game.triggerCheer('player');
-      }
-    }
-  }
-
-  const choices = tttSpecs.endChoices.map(c => ({
-    label: c.label,
-    className: c.className,
-    onClick: () => {
-      dialogue.close();
-      if (c.action === 'play_again') {
-        tttGame?.resetRound();
-      } else {
-        tttGame?.packUpBoard();
-      }
-    }
-  }));
-
-  dialogue.openCustomBeat(opponent, winText, choices);
-}
-
-function onCheckersGameEnd(winner, opponent) {
-  if (!opponent) return;
-  const checkersSpecs = dialogueData.dialogues.checkers;
-  let outcome = 'draw';
-  if (winner === 'player') outcome = 'win';
-  else if (winner === 'opponent') outcome = 'loss';
-
-  let winText = winner === 'player' ? checkersSpecs.win : (winner === 'opponent' ? checkersSpecs.loss : checkersSpecs.draw);
-
-  // Grant rewards if outcome rolled
-  const reward = rollReward(game, 'checkers', outcome);
-  if (reward) {
-    const notices = applyReward(game, reward);
-    if (notices.length) {
-      winText += `\nRewards: ${notices.join(' · ')}`;
-      showToast(`Rewards: ${notices.join(' · ')}`);
-      if (winner === 'player') {
-        game.triggerCheer('player');
-      }
-    }
-  }
-
-  const choices = checkersSpecs.endChoices.map(c => ({
-    label: c.label,
-    className: c.className,
-    onClick: () => {
-      dialogue.close();
-      if (c.action === 'play_again') {
-        checkersGame?.resetRound();
-      } else {
-        checkersGame?.packUpBoard();
-      }
-    }
-  }));
-
-  dialogue.openCustomBeat(opponent, winText, choices);
-}
-
-function onChessGameEnd(winner, opponent) {
-  if (!opponent) return;
-  const chessSpecs = dialogueData.dialogues.chess;
-  let outcome = 'draw';
-  if (winner === 'player') outcome = 'win';
-  else if (winner === 'opponent') outcome = 'loss';
-
-  let winText = winner === 'player' ? chessSpecs.win : (winner === 'opponent' ? chessSpecs.loss : chessSpecs.draw);
-
-  // Grant rewards if outcome rolled
-  const reward = rollReward(game, 'chess', outcome);
-  if (reward) {
-    const notices = applyReward(game, reward);
-    if (notices.length) {
-      winText += `\nRewards: ${notices.join(' · ')}`;
-      showToast(`Rewards: ${notices.join(' · ')}`);
-      if (winner === 'player') {
-        game.triggerCheer('player');
-      }
-    }
-  }
-
-  const choices = chessSpecs.endChoices.map(c => ({
-    label: c.label,
-    className: c.className,
-    onClick: () => {
-      dialogue.close();
-      if (c.action === 'play_again') {
-        chessGame?.resetRound();
-      } else {
-        chessGame?.packUpBoard();
-      }
-    }
-  }));
-
-  dialogue.openCustomBeat(opponent, winText, choices);
 }
 
 function openPlayerMenu() {
@@ -330,17 +431,11 @@ function openDebugMenu() {
 }
 
 function handleActionKey(character) {
-  if (tttGame?.isOpen()) {
-    tttGame.handleAction(character);
-    return;
-  }
-  if (checkersGame?.isOpen()) {
-    checkersGame.handleAction(character);
-    return;
-  }
-  if (chessGame?.isOpen()) {
-    chessGame.handleAction(character);
-    return;
+  if (host?.isOpen()) {
+    const result = host.handleAction(character);
+    if (result?.handled || result?.changed) return;
+    const seated = Boolean(character && host.session?.seats?.some(seat => seat.character === character));
+    if (seated) return;
   }
   if (dialogue?.isOpen() || (Date.now() - (dialogue?.justClosedAt || 0) < 300)) {
     return;
@@ -358,52 +453,114 @@ function handleActionKey(character) {
   panels?.setActiveTab(panels.lastActiveTab || 'backpack');
 }
 
-function onAbandonPrompt(onConfirm, onCancel) {
-  const opponent = tttGame?.activeBoard?.opponent;
-  const oppName = opponent?.name || 'Your friend';
-  const promptText = dialogueData.dialogues.ttt.abandonPrompt.replace('{name}', oppName);
-  const choices = dialogueData.dialogues.ttt.abandonChoices.map(c => ({
-    label: c.label,
-    className: c.className,
-    onClick: () => {
-      dialogue.close();
-      if (c.action === 'abandon') onConfirm();
-      else onCancel();
+function hostHooks() {
+  return {
+    onToast: showToast,
+    onCheer: (characterId, duration) => game?.triggerCheer(characterId || 'player', duration),
+    onGameEnd: handleGameEnd,
+    recordGameResult,
+    rollReward: (currentGame, rewardKey, outcome) => rollReward(currentGame || game, rewardKey, outcome),
+    applyReward: (currentGame, reward) => applyReward(currentGame || game, reward),
+    dialogues: dialogueData,
+    onEvent: event => {
+      if (event?.type === 'open') refreshMiniGameFlags();
     }
-  }));
-  dialogue.openCustomBeat(opponent, promptText, choices);
+  };
 }
 
-function onCheckersAbandonPrompt(onConfirm, onCancel) {
-  const opponent = checkersGame?.activeBoard?.opponent;
-  const oppName = opponent?.name || 'Your friend';
-  const promptText = dialogueData.dialogues.checkers.abandonPrompt.replace('{name}', oppName);
-  const choices = dialogueData.dialogues.checkers.abandonChoices.map(c => ({
-    label: c.label,
-    className: c.className,
-    onClick: () => {
-      dialogue.close();
-      if (c.action === 'abandon') onConfirm();
-      else onCancel();
+function behaviorQuery() {
+  return {
+    get: id => resolveCharacter(id),
+    distance: (a, b) => {
+      if (!a || !b) return Infinity;
+      return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    },
+    buddy: actor => {
+      const buddyId = actor?.buddyId;
+      return buddyId != null ? resolveCharacter(buddyId) : null;
+    },
+    nearestOpen: point => {
+      if (!point || !game?.terrain) return point || null;
+      return findOpenTile(game.terrain, point) || point;
     }
-  }));
-  dialogue.openCustomBeat(opponent, promptText, choices);
+  };
 }
 
-function onChessAbandonPrompt(onConfirm, onCancel) {
-  const opponent = chessGame?.activeBoard?.opponent;
-  const oppName = opponent?.name || 'Your friend';
-  const promptText = dialogueData.dialogues.chess.abandonPrompt.replace('{name}', oppName);
-  const choices = dialogueData.dialogues.chess.abandonChoices.map(c => ({
-    label: c.label,
-    className: c.className,
-    onClick: () => {
-      dialogue.close();
-      if (c.action === 'abandon') onConfirm();
-      else onCancel();
-    }
-  }));
-  dialogue.openCustomBeat(opponent, promptText, choices);
+function behaviorDeps() {
+  return {
+    tryStep: (actor, dx, dy, durationMs) => {
+      if (!game?.tryStep) return false;
+      // The wander toggle parks neighbours but leaves companions following.
+      if (!game.wander && actor && !actor.isCompanion) return false;
+      return game.tryStep(actor, dx, dy, msToSeconds(durationMs));
+    },
+    findPath: (actor, target, blocked) => {
+      if (!game?.terrain || !actor || !target) return [];
+      return findPath(game.terrain, { x: actor.x, y: actor.y }, target, blocked);
+    },
+    face: (actor, direction) => {
+      if (!actor) return;
+      if (typeof game?.face === 'function') game.face(actor, direction);
+      else actor.direction = direction;
+    },
+    startGame: request => npcGameAdapter.start({
+      game: request.game,
+      actor: request.actor,
+      partner: request.partner,
+      terrain: game?.terrain || null
+    }),
+    gameStatus: token => npcGameAdapter.status(token),
+    abortGame: token => npcGameAdapter.abort(token)
+  };
+}
+
+function socialLine({ key }) {
+  return dialogueData.social?.[key] || null;
+}
+
+function ensureBehaviorRuntime() {
+  if (behaviorRuntime || !game) return behaviorRuntime;
+  npcGameAdapter = createNpcGameAdapter({ host });
+  bubbles = bubbles || new SpeechBubbles({ getActor: resolveCharacter });
+  const social = createSocialActions({
+    bubbles,
+    adapter: npcGameAdapter,
+    lineFor: socialLine
+  });
+
+  behaviorRuntime = new BehaviorRuntime({
+    config: behaviorData,
+    actors: behaviorActors(),
+    player: game.player,
+    query: behaviorQuery(),
+    deps: behaviorDeps(),
+    actions: social
+  });
+
+  bridgeBehaviorEvents(behaviorRuntime, bubbles, {
+    host,
+    onToast: showToast,
+    notifyGames: false
+  });
+
+  game.setBehaviorRuntime?.(behaviorRuntime);
+  return behaviorRuntime;
+}
+
+function syncBehaviorWorld({ reset = false } = {}) {
+  if (!behaviorRuntime || !game) return;
+  if (reset) behaviorRuntime.setWorld({ actors: behaviorActors(), player: game.player, now: behaviorRuntime.now });
+  else behaviorRuntime.blackboard.sync(behaviorActors(), game.player, behaviorRuntime.now);
+}
+
+function completeContinuousActivity() {
+  const session = host?.session;
+  if (!session || session.meta?.activity !== 'continuous') return;
+  const legacy = session.game?.legacy;
+  if (legacy && legacy.activeBall === null) {
+    host.close({ reason: 'activity-complete', settle: false, record: false, reward: false });
+    refreshMiniGameFlags();
+  }
 }
 
 function ensureGame() {
@@ -424,35 +581,39 @@ function ensureGame() {
       onActionKey: handleActionKey,
       isMenuOpen: () => Boolean(panels?.isMenuOpen?.())
     });
-    game.onFrame = () => {
-      if (dialogue?.isOpen()) {
-        dialogue.updatePosition();
-      }
-    };
 
-    fetchGame = new FetchMiniGame({ game, onToast: showToast });
-    tttGame = new TicTacToeMiniGame({
-      game,
-      onToast: showToast,
-      onGameEnd: onTTTGameEnd,
-      onAbandonPrompt
-    });
-    checkersGame = new CheckersMiniGame({
-      game,
-      onToast: showToast,
-      onGameEnd: onCheckersGameEnd,
-      onAbandonPrompt: onCheckersAbandonPrompt
-    });
-    chessGame = new ChessMiniGame({
-      game,
-      onToast: showToast,
-      onGameEnd: onChessGameEnd,
-      onAbandonPrompt: onChessAbandonPrompt
-    });
-    game.registerMiniGame(fetchGame);
-    game.registerMiniGame(tttGame);
-    game.registerMiniGame(checkersGame);
-    game.registerMiniGame(chessGame);
+    bubbles = new SpeechBubbles({ getActor: resolveCharacter });
+    host = new MiniGameHost({ game, hooks: hostHooks() });
+    registerContractGames(host, miniGamesData.miniGames);
+
+    delegated = {
+      host: typeof game.setMiniGameHost === 'function',
+      runtime: typeof game.setBehaviorRuntime === 'function'
+    };
+    game.setMiniGameHost?.(host);
+    game.setSpeechBubbles?.(bubbles);
+    ensureBehaviorRuntime();
+
+    game.onFrame = () => {
+      if (dialogue?.isOpen()) dialogue.updatePosition();
+
+      const now = performance.now();
+      const dtMs = lastFrameAt ? Math.max(0, Math.min(now - lastFrameAt, 80)) : 0;
+      lastFrameAt = now;
+
+      // Fallbacks keep the app playable if the runtime integration is not present.
+      if (!delegated.host) host?.update(dtMs);
+      if (!delegated.runtime) behaviorRuntime?.update(dtMs);
+      // The renderer draws bubbles; the app shell always advances their timers.
+      bubbles?.update(dtMs);
+
+      // Drive ambient NPC games even when the debug trigger started one
+      // directly (the behavior runtime also polls via awaitNpcGame).
+      npcGameAdapter?.activeToken?.();
+
+      completeContinuousActivity();
+      if (host && !host.isOpen()) refreshMiniGameFlags();
+    };
   }
   return game;
 }
@@ -619,7 +780,8 @@ async function enterPark() {
     player: {
       x: draft.world.spawn.x,
       y: draft.world.spawn.y,
-      inventory: draft.playerInventory || createStarterInventory()
+      inventory: draft.playerInventory || createStarterInventory(),
+      equipped: []
     },
     npcs,
     companions,
@@ -640,7 +802,44 @@ async function enterPark() {
   button.textContent = 'Enter the park';
 }
 
+function applyBehaviorState(state) {
+  if (!behaviorRuntime) return;
+  const saved = state?.behavior ?? state?.behaviors ?? state?.behaviorState ?? null;
+  if (!saved || typeof saved !== 'object') return;
+
+  const relations = saved.relations || saved.blackboard || null;
+  if (relations && typeof behaviorRuntime.blackboard?.loadRelations === 'function') {
+    behaviorRuntime.blackboard.loadRelations(relations);
+  }
+
+  const cooldowns = saved.cooldowns || saved.cooldownStore || null;
+  if (cooldowns) {
+    const now = behaviorRuntime.now || 0;
+    const savedNow = Number(saved.counters?.savedAtMs);
+    const entries = Array.isArray(cooldowns)
+      ? cooldowns
+      : (Array.isArray(cooldowns.entries) ? cooldowns.entries : []);
+    // Cooldowns are stored on the runtime clock; rebase them onto this session.
+    const rebased = Number.isFinite(savedNow)
+      ? entries.map(entry => ({
+        ...entry,
+        readyAt: now + Math.max(0, (Number(entry.readyAt) || 0) - savedNow)
+      }))
+      : entries;
+    behaviorRuntime.cooldowns = CooldownStore.deserialize({ entries: rebased }, { now });
+    behaviorRuntime.cooldowns.now = now;
+  }
+}
+
 function applyState(state) {
+  // A reload never resumes a live board or bubbles.
+  if (host?.isOpen()) {
+    if (npcOwnsSession()) packUpNpcSession('load');
+    else host.close({ reason: 'load', settle: false, record: false, reward: false });
+  }
+  refreshMiniGameFlags();
+  bubbles?.clear();
+
   const worldData = generateWorld(state.worldSeed);
   const terrain = decodeTerrain(state.terrain) || worldData.grid;
   const scenery = worldData.scenery || [];
@@ -651,7 +850,9 @@ function applyState(state) {
     x: Number.isFinite(Number(state.player?.x)) ? Math.round(Number(state.player.x)) : 32,
     y: Number.isFinite(Number(state.player?.y)) ? Math.round(Number(state.player.y)) : 32,
     direction: state.player?.direction ?? 0,
-    inventory: state.player?.inventory || createStarterInventory(),
+    inventory: normalizeInventory(state.player?.inventory || createStarterInventory()),
+    equipped: Array.isArray(state.player?.equipped) ? state.player.equipped : [],
+    effectGhosts: Array.isArray(state.player?.effectGhosts) ? state.player.effectGhosts : [],
     coins: Number.isFinite(state.player?.coins) ? state.player.coins : 0,
     stabledCompanions: Array.isArray(state.player?.stabledCompanions) ? state.player.stabledCompanions : []
   };
@@ -670,7 +871,9 @@ function applyState(state) {
         name: npc.name,
         recipe: npc.recipe,
         vibe: npc.vibe || '',
-        inventory: npc.inventory || createStarterInventory(),
+        inventory: normalizeInventory(npc.inventory || createStarterInventory()),
+        equipped: Array.isArray(npc.equipped) ? npc.equipped : [],
+        effectGhosts: Array.isArray(npc.effectGhosts) ? npc.effectGhosts : [],
         x: hasPosition ? Math.round(Number(npc.x)) : -1,
         y: hasPosition ? Math.round(Number(npc.y)) : -1,
         direction: Number(npc.direction) || 0
@@ -729,6 +932,9 @@ function applyState(state) {
     scenery,
     wander: state.wander !== false
   });
+  syncBehaviorWorld({ reset: true });
+  applyBehaviorState(state);
+  behaviorRuntime?.setDialogue(false);
   friends = new Set(
     (Array.isArray(state.friends) ? state.friends : [])
       .filter(id => npcs.some(npc => npc.id === id))
@@ -750,10 +956,84 @@ function applyState(state) {
   updateMeta();
 }
 
+function behaviorSaveState() {
+  if (!behaviorRuntime) return null;
+  return {
+    relations: behaviorRuntime.blackboard?.serializeRelations?.() || null,
+    cooldowns: behaviorRuntime.cooldowns?.serialize?.(behaviorRuntime.now) || null,
+    counters: { savedAtMs: behaviorRuntime.now || 0 }
+  };
+}
+
 function saveNow() {
   if (!entered) return;
-  const state = serializeSave(game, draft, friends);
+  const state = serializeSave(game, draft, friends, behaviorSaveState());
   saveState(state);
+}
+
+function grantAllEffects() {
+  const player = game?.player;
+  if (!player) return;
+  if (!Array.isArray(player.inventory)) player.inventory = [];
+  const owned = new Set(player.inventory.map(item => item?.id).filter(Boolean));
+  let added = 0;
+
+  for (const effect of Object.values(EFFECT_CATALOG)) {
+    const itemId = effect?.itemId;
+    if (!itemId || owned.has(itemId)) continue;
+    const item = createItemInstance(itemId);
+    if (!item) continue;
+    player.inventory.push(item);
+    owned.add(itemId);
+    added += 1;
+  }
+
+  if (added) {
+    panels?.renderInventory?.();
+    saveNow();
+    showToast(`${added} effect item${added === 1 ? '' : 's'} added to your bag.`);
+  } else {
+    showToast('You already own every effect item.');
+  }
+}
+
+function triggerNpcGame() {
+  const npcs = (game?.npcs || []).filter(npc => !npc.inMiniGame);
+  if (npcs.length < 2) {
+    showToast('Need two neighbours for an NPC game.');
+    return;
+  }
+  if (host?.isOpen()) {
+    showToast(`${host.session.meta.title || 'A game'} is already open. Pack it up first.`);
+    return;
+  }
+
+  // Pick the closest pair so the spectators do not spend half a minute walking.
+  let pair = [npcs[0], npcs[1]];
+  let bestDistance = Infinity;
+  for (let i = 0; i < npcs.length; i++) {
+    for (let j = i + 1; j < npcs.length; j++) {
+      const distance = Math.abs(npcs[i].x - npcs[j].x) + Math.abs(npcs[i].y - npcs[j].y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        pair = [npcs[i], npcs[j]];
+      }
+    }
+  }
+
+  const result = npcGameAdapter.start({
+    game: 'tic-tac-toe',
+    actor: pair[0],
+    partner: pair[1],
+    terrain: game.terrain || null
+  });
+  if (!result.ok) {
+    showToast(result.message || 'The neighbours could not start a game.');
+    return;
+  }
+  refreshMiniGameFlags();
+  panels?.updateDebugUI?.();
+  showToast(`${pair[0].name} and ${pair[1].name} started Tic-Tac-Toe.`);
 }
 
 function addNeighbour() {
@@ -765,6 +1045,7 @@ function addNeighbour() {
   const npc = makeLiveNpc();
   preloadAvatars([npc.recipe, npc.companion?.recipe]);
   game.addNpc(npc, npc.companion);
+  syncBehaviorWorld();
   panels?.updateFriendsUI();
   saveNow();
   showToast(`${npc.name} and their buddy ${npc.companion.name} moved in.`);
@@ -795,8 +1076,12 @@ function removeCardCharacter() {
   const cardCharacter = panels?.cardCharacter;
   if (!cardCharacter || cardCharacter.isPlayer || cardCharacter.isCompanion) return;
   const name = cardCharacter.name;
+  if (host?.isOpen() && host.session?.participantIds?.has(cardCharacter.id)) {
+    packUpGame();
+  }
   friends.delete(cardCharacter.id);
   game.removeNpc(cardCharacter.id);
+  syncBehaviorWorld();
   panels?.closeCard();
   panels?.updateFriendsUI();
   saveNow();
@@ -897,25 +1182,29 @@ function bindEvents() {
 }
 
 function boot() {
+  ensureGame();
+
   panels = new PanelsUI({
     getGame: () => game,
     getFriends: () => friends,
-    onThrowBall: options => fetchGame?.throwBall(options),
-    onUnfurlTTT: opponent => tttGame?.unfurlBoard(opponent),
-    onPackUpTTT: () => tttGame?.packUpBoard(),
-    isTTTOpen: () => tttGame?.isOpen(),
-    onUnfurlCheckers: opponent => checkersGame?.unfurlBoard(opponent),
-    onPackUpCheckers: () => checkersGame?.packUpBoard(),
-    isCheckersOpen: () => checkersGame?.isOpen(),
-    onUnfurlChess: opponent => chessGame?.unfurlBoard(opponent),
-    onPackUpChess: () => chessGame?.packUpBoard(),
-    isChessOpen: () => chessGame?.isOpen(),
+    onThrowBall,
+    onPlayGame,
+    onPackUpGame: gameId => packUpGame(gameId),
+    isGameOpen: gameId => Boolean(host?.isOpen() && host.activeGameId === gameId),
+    getGameMetas: () => (host ? [...host.registry.values()].map(entry => entry.meta) : []),
+    getHostState: () => host?.getState?.() || null,
+    getBehaviorSummary: () => behaviorRuntime?.snapshot?.() || null,
+    onGrantEffects: grantAllEffects,
+    onTriggerNpcGame: triggerNpcGame,
+    onToast: showToast,
     onSave: saveNow,
     onSelect: character => panels?.showCard(character),
     onAddNeighbour: addNeighbour,
     onNewPark: () => {
       if (!window.confirm('Start a new park? Your current park and neighbours will be replaced.')) return;
       panels?.closeMenu();
+      if (host?.isOpen()) packUpGame();
+      bubbles?.clear();
       clearSave();
       entered = false;
       openWizard({ fresh: true });
@@ -936,7 +1225,6 @@ function boot() {
     makeSeed
   });
 
-  ensureGame();
   bindEvents();
 
   const saved = loadSave();
@@ -963,7 +1251,22 @@ boot();
 window.playPark = {
   get game() { return game; },
   get draft() { return draft; },
-  get fetchGame() { return fetchGame; },
-  get tttGame() { return tttGame; },
-  get checkersGame() { return checkersGame; }
+  get dialogue() { return dialogue; },
+  get host() { return host; },
+  get miniGameHost() { return host; },
+  get hostState() { return host?.getState?.() || null; },
+  get bubbles() { return bubbles; },
+  get behaviorRuntime() { return behaviorRuntime; },
+  get npcGameAdapter() { return npcGameAdapter; },
+  get fetchGame() { return host?.activeGameId === 'fetch' ? host.session?.game?.legacy || null : null; },
+  get tttGame() { return host?.activeGameId === 'tic-tac-toe' ? host.session?.game?.legacy || null : null; },
+  get checkersGame() { return host?.activeGameId === 'checkers' ? host.session?.game?.legacy || null : null; },
+  get chessGame() { return host?.activeGameId === 'chess' ? host.session?.game?.legacy || null : null; },
+  getDebugState() {
+    return {
+      host: host?.getState?.() || null,
+      behavior: behaviorRuntime?.snapshot?.() || null,
+      bubbles: bubbles?.snapshot?.() || null
+    };
+  }
 };

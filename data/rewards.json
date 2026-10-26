@@ -51,10 +51,18 @@
     ],
     "checkers_win_loot": [
       { "type": "item", "weight": 4, "pool": ["ball", "tic-tac-toe", "checkers"] },
+      { "type": "item", "weight": 2, "pool": ["hover-halo", "prism-pin", "echo-bell"] },
+      { "type": "item", "weight": 1, "pool": ["bouncy-boots", "buddy-cape", "glowworm-jar"] },
+      { "type": "item", "weight": 1, "pool": ["lucky-clover"] },
+      { "type": "item", "weight": 1, "pool": ["big-o-bracelet", "chamo-clip", "teleport-tricorder"] },
       { "type": "coins", "weight": 6, "amount": 30 }
     ],
     "chess_win_loot": [
       { "type": "item", "weight": 4, "pool": ["ball", "tic-tac-toe", "checkers", "chess"] },
+      { "type": "item", "weight": 2, "pool": ["hover-halo", "prism-pin", "echo-bell", "bouncy-boots"] },
+      { "type": "item", "weight": 1, "pool": ["buddy-cape", "glowworm-jar"] },
+      { "type": "item", "weight": 1, "pool": ["lucky-clover"] },
+      { "type": "item", "weight": 1, "pool": ["big-o-bracelet", "chamo-clip", "teleport-tricorder"] },
       { "type": "coins", "weight": 6, "amount": 50 }
     ]
   }

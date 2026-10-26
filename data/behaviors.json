@@ -1,0 +1,419 @@
+{
+  "version": 1,
+  "tick": {
+    "decisionIntervalMs": 250,
+    "maxDecisionsPerTick": 24,
+    "maxActionsPerTick": 64
+  },
+  "limits": {
+    "maxOpenNpcGames": 1,
+    "maxFriendshipsPerNpc": 6,
+    "maxPairRecords": 256,
+    "npcGames": ["tic-tac-toe"],
+    "friendThreshold": {
+      "greets": 2,
+      "activities": 1
+    }
+  },
+  "social": {
+    "greetRadius": 3,
+    "gameRadius": 4,
+    "greetPlayerSuppression": 3,
+    "gamePlayerSuppression": 4
+  },
+  "cooldowns": {
+    "greetActor": {
+      "scope": "actor",
+      "durationMs": [6000, 10000]
+    },
+    "greetPair": {
+      "scope": "pair",
+      "durationMs": [20000, 30000]
+    },
+    "befriendPair": {
+      "scope": "pair",
+      "durationMs": [60000, 90000]
+    },
+    "inviteGamePair": {
+      "scope": "pair",
+      "durationMs": [45000, 70000]
+    },
+    "inviteGameGlobal": {
+      "scope": "global",
+      "durationMs": 20000
+    }
+  },
+  "styleFamilies": {
+    "dog": "pet-dog",
+    "cat": "pet-cat",
+    "chicken": "pet-chicken",
+    "chick": "pet-chick",
+    "horse": "pet-horse",
+    "pig": "pet-pig",
+    "sheep": "pet-sheep",
+    "wolf": "pet-wolf",
+    "raccoon": "pet-raccoon",
+    "hedgehog": "pet-hedgehog",
+    "yeti": "creature-yeti",
+    "demon": "creature-demon",
+    "goblin": "creature-goblin",
+    "giant": "creature-giant",
+    "skeleton": "creature-skeleton",
+    "skeleton-armor": "creature-skeleton",
+    "skeleton_armor": "creature-skeleton",
+    "zombie": "creature-zombie",
+    "wizard": "creature-wizard",
+    "gaze": "gaze",
+    "clay": "clay",
+    "critters": "critters",
+    "sprouts": "sprouts",
+    "voxel-bot": "voxel-bot"
+  },
+  "selectors": {
+    "nearest": {
+      "type": "nearest",
+      "description": "Closest matching actor, filtered by kind, radius, relation, and player proximity."
+    },
+    "byId": {
+      "type": "byId",
+      "description": "Look up one actor by stable id."
+    },
+    "mutualFriend": {
+      "type": "mutualFriend",
+      "description": "Closest actor that is a symmetric friend of the running actor."
+    },
+    "buddy": {
+      "type": "buddy",
+      "description": "The actor a companion is assigned to follow."
+    },
+    "midpoint": {
+      "type": "midpoint",
+      "description": "Tile midpoint between two actors or points."
+    }
+  },
+  "behaviors": {
+    "wander": {
+      "priority": 10,
+      "assignmentsOnly": true,
+      "when": {
+        "all": [
+          { "eq": ["actor.kind", "npc"] },
+          { "eq": ["actor.moving", false] }
+        ]
+      },
+      "target": null,
+      "states": {
+        "idle": {
+          "action": "wait",
+          "durationMs": [500, 1600],
+          "next": "step"
+        },
+        "step": {
+          "action": "wanderStep",
+          "durationMs": 1200,
+          "params": {
+            "stepIntervalMs": 320,
+            "preferForward": true
+          },
+          "next": "idle"
+        }
+      }
+    },
+    "follow": {
+      "priority": 20,
+      "assignmentsOnly": true,
+      "when": {
+        "all": [
+          { "eq": ["actor.kind", "companion"] },
+          { "eq": ["actor.inMiniGame", false] }
+        ]
+      },
+      "target": {
+        "selector": "buddy",
+        "required": true,
+        "params": {}
+      },
+      "params": {
+        "distance": 1.5,
+        "leash": 10,
+        "stepIntervalMs": 700,
+        "stepDurationMs": 260,
+        "roamRadius": 2,
+        "roamChance": 0,
+        "roamIntervalMs": 3000,
+        "cadence": "generic"
+      },
+      "states": {
+        "trail": {
+          "action": "followTarget",
+          "durationMs": 0,
+          "next": "rest"
+        },
+        "rest": {
+          "action": "wait",
+          "durationMs": [600, 1200],
+          "next": "trail"
+        }
+      }
+    },
+    "greet": {
+      "priority": 60,
+      "cooldowns": ["greetActor", "greetPair"],
+      "maxDurationMs": 5000,
+      "when": {
+        "all": [
+          { "eq": ["actor.kind", "npc"] },
+          { "eq": ["actor.moving", false] },
+          { "eq": ["actor.inDialogue", false] },
+          { "eq": ["actor.inMiniGame", false] },
+          { "eq": ["social.dialogueOpen", false] },
+          { "exists": ["target.id"] },
+          { "eq": ["pair.friends", false] },
+          { "gt": ["player.distance", 3] },
+          { "gt": ["pair.distance", 0] },
+          { "lt": ["actor.friendCount", 6] }
+        ]
+      },
+      "target": {
+        "selector": "nearest",
+        "required": true,
+        "params": {
+          "kind": "npc",
+          "maxDistance": 3,
+          "minPlayerDistance": 3,
+          "notFriends": true
+        }
+      },
+      "states": {
+        "face": {
+          "action": "faceTarget",
+          "durationMs": 220,
+          "next": "wave"
+        },
+        "wave": {
+          "action": "emote",
+          "durationMs": 700,
+          "params": { "emote": "wave" },
+          "next": "speak"
+        },
+        "speak": {
+          "action": "say",
+          "durationMs": 900,
+          "params": { "key": "greet", "text": "hi!" },
+          "next": "record"
+        },
+        "record": {
+          "action": "resolveFriendship",
+          "durationMs": 100,
+          "params": { "interaction": "greet" },
+          "next": null
+        }
+      },
+      "onComplete": { "event": "behavior.greet" }
+    },
+    "befriend": {
+      "priority": 70,
+      "cooldowns": ["befriendPair"],
+      "maxDurationMs": 8000,
+      "when": {
+        "all": [
+          { "eq": ["actor.kind", "npc"] },
+          { "eq": ["actor.moving", false] },
+          { "eq": ["actor.inDialogue", false] },
+          { "eq": ["actor.inMiniGame", false] },
+          { "eq": ["social.dialogueOpen", false] },
+          { "exists": ["target.id"] },
+          { "eq": ["pair.friends", false] },
+          { "gte": ["pair.greets", 2] },
+          { "lt": ["actor.friendCount", 6] },
+          { "lt": ["target.friendCount", 6] },
+          { "lt": ["counts.pairRecords", 256] },
+          { "gt": ["player.distance", 3] },
+          { "gt": ["pair.distance", 0] }
+        ]
+      },
+      "target": {
+        "selector": "nearest",
+        "required": true,
+        "params": {
+          "kind": "npc",
+          "maxDistance": 3,
+          "minPlayerDistance": 3,
+          "notFriends": true,
+          "minGreets": 2
+        }
+      },
+      "states": {
+        "face": {
+          "action": "faceTarget",
+          "durationMs": 220,
+          "next": "play"
+        },
+        "play": {
+          "action": "emote",
+          "durationMs": 1200,
+          "params": { "emote": "dance" },
+          "next": "activity"
+        },
+        "activity": {
+          "action": "resolveFriendship",
+          "durationMs": 100,
+          "params": { "interaction": "activity" },
+          "next": "confirm"
+        },
+        "confirm": {
+          "action": "resolveFriendship",
+          "durationMs": 100,
+          "params": { "interaction": "befriend" },
+          "next": "cheer"
+        },
+        "cheer": {
+          "action": "emote",
+          "durationMs": 800,
+          "params": { "emote": "cheer" },
+          "next": null
+        }
+      },
+      "onComplete": { "event": "behavior.befriend" }
+    },
+    "inviteGame": {
+      "priority": 80,
+      "cooldowns": ["inviteGamePair", "inviteGameGlobal"],
+      "maxDurationMs": 30000,
+      "locks": { "game": true },
+      "when": {
+        "all": [
+          { "eq": ["actor.kind", "npc"] },
+          { "eq": ["actor.moving", false] },
+          { "eq": ["actor.inDialogue", false] },
+          { "eq": ["actor.inMiniGame", false] },
+          { "eq": ["social.dialogueOpen", false] },
+          { "exists": ["target.id"] },
+          { "eq": ["pair.friends", true] },
+          { "lt": ["counts.openNpcGames", 1] },
+          { "gt": ["player.distance", 4] },
+          { "gt": ["pair.distance", 0] }
+        ]
+      },
+      "target": {
+        "selector": "mutualFriend",
+        "required": true,
+        "params": {
+          "kind": "npc",
+          "maxDistance": 4,
+          "minPlayerDistance": 4
+        }
+      },
+      "states": {
+        "face": {
+          "action": "faceTarget",
+          "durationMs": 250,
+          "next": "approach"
+        },
+        "approach": {
+          "action": "seek",
+          "durationMs": 6000,
+          "params": { "tolerance": 1, "stepIntervalMs": 280 },
+          "next": "start"
+        },
+        "start": {
+          "action": "startGame",
+          "durationMs": 1500,
+          "params": { "game": "tic-tac-toe" },
+          "next": "await"
+        },
+        "await": {
+          "action": "awaitGame",
+          "durationMs": 22000,
+          "params": { "timeoutMs": 20000 },
+          "next": "cheer"
+        },
+        "cheer": {
+          "action": "emote",
+          "durationMs": 900,
+          "params": { "emote": "cheer" },
+          "next": null
+        }
+      },
+      "onComplete": { "event": "behavior.inviteGame" }
+    }
+  },
+  "assignments": [
+    {
+      "match": { "kind": "companion", "style": "dog" },
+      "behavior": "follow",
+      "overrides": {
+        "params": {
+          "distance": 2.5,
+          "leash": 12,
+          "stepIntervalMs": 620,
+          "stepDurationMs": 220,
+          "roamRadius": 3,
+          "roamChance": 0.35,
+          "roamIntervalMs": 2600,
+          "cadence": "trot",
+          "hop": false
+        }
+      }
+    },
+    {
+      "match": { "kind": "companion", "style": "gaze" },
+      "behavior": "follow",
+      "overrides": {
+        "params": {
+          "distance": 1,
+          "leash": 10,
+          "stepIntervalMs": 700,
+          "stepDurationMs": 260,
+          "offset": { "x": 1, "y": 0 },
+          "roamChance": 0,
+          "cadence": "hover",
+          "hover": true
+        }
+      }
+    },
+    {
+      "match": { "kind": "companion", "style": "clay" },
+      "behavior": "follow",
+      "overrides": {
+        "params": {
+          "distance": 1.2,
+          "leash": 10,
+          "stepIntervalMs": 520,
+          "stepDurationMs": 260,
+          "roamRadius": 1,
+          "roamChance": 0.15,
+          "roamIntervalMs": 4200,
+          "cadence": "hop-roll",
+          "hop": true,
+          "roll": true
+        }
+      }
+    },
+    {
+      "match": { "kind": "companion", "family": "creature-skeleton" },
+      "behavior": "follow",
+      "overrides": {
+        "params": {
+          "distance": 1.5,
+          "leash": 12,
+          "stepIntervalMs": 900,
+          "stepDurationMs": 360,
+          "roamRadius": 2,
+          "roamChance": 0.2,
+          "roamIntervalMs": 5000,
+          "cadence": "shamble",
+          "shamble": true
+        }
+      }
+    },
+    {
+      "match": { "kind": "companion" },
+      "behavior": "follow"
+    },
+    {
+      "match": { "kind": "npc" },
+      "behavior": "wander"
+    }
+  ]
+}

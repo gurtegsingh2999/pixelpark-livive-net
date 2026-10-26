@@ -8,10 +8,23 @@ import {
 } from './world.js';
 import { occupantAtTile, reservationAtTile, canCollide } from './characters.js';
 import { directionForStep, DOWN, LEFT, RIGHT } from './facing.js';
-import { WorldRenderer, TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
+import {
+  WorldRenderer,
+  TILE,
+  CHARACTER_HEIGHT,
+  COMPANION_HEIGHT,
+  characterEffectOwner,
+  characterVisualHeight
+} from './renderer.js';
+import { resolveFx } from './effects.js';
 import engineConfig from '../data/engine_config.json' with { type: 'json' };
 
-export { TILE, CHARACTER_HEIGHT, COMPANION_HEIGHT } from './renderer.js';
+export {
+  TILE,
+  CHARACTER_HEIGHT,
+  COMPANION_HEIGHT,
+  characterVisualHeight
+} from './renderer.js';
 
 export const PLAYER_STEP = engineConfig.timings.playerStep;
 export const NPC_STEP = engineConfig.timings.npcStep;
@@ -32,6 +45,18 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * Clamp an animation-frame delta to a safe, non-negative simulation step.
+ * The first rAF timestamp can precede the performance.now() captured in
+ * start(), which previously produced a negative dt and tripped strict
+ * runtime guards.
+ */
+export function frameDelta(now, last, max = 0.05) {
+  const seconds = (Number(now) - Number(last)) / 1000;
+  if (!Number.isFinite(seconds)) return 0;
+  return Math.max(0, Math.min(seconds, max));
+}
+
 export class Game {
   constructor({ canvas, minimap, onSelect, onToast, onDialogue, onActionKey, isMenuOpen } = {}) {
     this.canvas = canvas;
@@ -48,6 +73,9 @@ export class Game {
     this.npcs = [];
     this.companions = [];
     this.miniGames = [];
+    this.miniGameHost = null;
+    this.behaviorRuntime = null;
+    this.speechBubbles = null;
     this.wander = true;
     this.previewFocus = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
     this.camera = { x: 0, y: 0 };
@@ -79,6 +107,21 @@ export class Game {
 
   registerMiniGame(miniGame) {
     this.miniGames.push(miniGame);
+  }
+
+  setMiniGameHost(host) {
+    this.miniGameHost = host || null;
+    return this;
+  }
+
+  setBehaviorRuntime(runtime) {
+    this.behaviorRuntime = runtime || null;
+    return this;
+  }
+
+  setSpeechBubbles(bubbles) {
+    this.speechBubbles = bubbles || null;
+    return this;
   }
 
   start() {
@@ -115,6 +158,7 @@ export class Game {
       recipe: input.recipe,
       vibe: input.vibe || '',
       inventory: Array.isArray(input.inventory) ? input.inventory : [],
+      equipped: Array.isArray(input.equipped) ? input.equipped : [],
       coins: Number.isFinite(input.coins) ? input.coins : 0,
       stabledCompanions: Array.isArray(input.stabledCompanions) ? input.stabledCompanions : [],
       isPlayer,
@@ -146,6 +190,8 @@ export class Game {
       name: input.name || 'Buddy',
       buddyId: buddy.id,
       recipe: input.recipe,
+      inventory: Array.isArray(input.inventory) ? input.inventory : [],
+      equipped: Array.isArray(input.equipped) ? input.equipped : [],
       isCompanion: true,
       x,
       y,
@@ -320,7 +366,8 @@ export class Game {
     // Check collision with NPCs
     const bumpNpc = occupantAtTile(this.npcs, nx, ny);
     if (bumpNpc) {
-      const isMiniGameActive = this.miniGames.some(m => m.isOpen && m.isOpen());
+      const isMiniGameActive = Boolean(this.miniGameHost?.isOpen?.())
+        || this.miniGames.some(m => m.isOpen && m.isOpen());
       if (isMiniGameActive && bumpNpc.inMiniGame) {
         this.heldKeys = [];
         this.player.path = [];
@@ -400,10 +447,22 @@ export class Game {
     this.camera.y += (targetY - this.camera.y) * t;
   }
 
+  resolveFxFor(character) {
+    if (!character) return null;
+    const owner = characterEffectOwner(this, character);
+    return resolveFx(character, this.time * 1000, owner);
+  }
+
   interpolated(character) {
-    const t = character.moving
-      ? clamp(character.elapsed / character.duration, 0, 1)
+    if (!character) return { x: 0, y: 0 };
+    if (!character.moving) return { x: character.x, y: character.y };
+    const t = clamp(character.elapsed / character.duration, 0, 1);
+    const arriveAt = Number.isFinite(character.motionArriveAt)
+      ? clamp(character.motionArriveAt, 0, 1)
       : 1;
+    // Teleport-style motion snaps to the destination early, but only after the
+    // same collision/reservation/board checks a normal step performs.
+    if (t >= arriveAt) return { x: character.toX, y: character.toY };
     return {
       x: character.fromX + (character.toX - character.fromX) * t,
       y: character.fromY + (character.toY - character.fromY) * t
@@ -424,12 +483,27 @@ export class Game {
       return false;
     }
 
-    // Check if any active mini-game blocks movement onto this tile
-    for (const miniGame of this.miniGames) {
-      if (miniGame.blocksStep && miniGame.blocksStep(character, nx, ny)) {
+    // Check if an active mini-game blocks movement onto this tile. The host is
+    // authoritative when present; legacy mini-game instances remain supported.
+    if (this.miniGameHost) {
+      if (typeof this.miniGameHost.blocksStep === 'function'
+        && this.miniGameHost.blocksStep(character, nx, ny)) {
         return false;
       }
+    } else {
+      for (const miniGame of this.miniGames) {
+        if (miniGame.blocksStep && miniGame.blocksStep(character, nx, ny)) {
+          return false;
+        }
+      }
     }
+
+    // Effect movement is cosmetic: it scales the step clock and records a
+    // motion style, but never bypasses the checks above.
+    const fx = this.resolveFxFor(character);
+    const durationScale = Number.isFinite(fx?.stats?.stepDurationScale)
+      ? fx.stats.stepDurationScale
+      : 1;
 
     character.fromX = character.x;
     character.fromY = character.y;
@@ -437,8 +511,19 @@ export class Game {
     character.toY = ny;
     character.moving = true;
     character.elapsed = 0;
-    character.duration = duration;
+    character.duration = Math.max(0.01, duration * durationScale);
     character.direction = directionForStep(dx, dy);
+
+    const motionId = fx?.motionId || null;
+    character.motionStyle = motionId;
+    character.motionArriveAt = 1;
+    if (motionId === 'teleport') {
+      const blinkMs = Number(fx?.motion?.blinkMs);
+      const durationMs = character.duration * 1000;
+      character.motionArriveAt = Number.isFinite(blinkMs) && durationMs > 0
+        ? clamp(blinkMs / durationMs, 0.05, 1)
+        : 0.6;
+    }
     return true;
   }
 
@@ -542,6 +627,10 @@ export class Game {
       return;
     }
 
+    // Behavior runtime owns wander decisions when present. Movement completion
+    // and inMiniGame staging above still run every frame.
+    if (this.behaviorRuntime) return;
+
     if (!this.wander) return;
     npc.wait -= dt;
     if (npc.wait > 0) return;
@@ -575,6 +664,12 @@ export class Game {
   }
 
   getMiniGameBlockedTiles() {
+    if (this.miniGameHost) {
+      if (typeof this.miniGameHost.getBlockedTiles === 'function') {
+        return this.miniGameHost.getBlockedTiles();
+      }
+      return new Set();
+    }
     const blocked = new Set();
     for (const game of this.miniGames) {
       if (game.isOpen?.() && game.activeBoard?.originX !== undefined) {
@@ -591,6 +686,11 @@ export class Game {
 
   isCharacterOnMiniGameBoard(character) {
     if (!character) return false;
+    if (this.miniGameHost) {
+      return typeof this.miniGameHost.isTileOnBoard === 'function'
+        ? Boolean(this.miniGameHost.isTileOnBoard(character.x, character.y))
+        : false;
+    }
     for (const game of this.miniGames) {
       if (game.isOpen?.() && game.isTileOnBoard?.(character.x, character.y)) {
         return true;
@@ -601,6 +701,17 @@ export class Game {
 
   isParticipantCompanion(comp) {
     if (!comp) return false;
+    if (this.miniGameHost) {
+      if (typeof this.miniGameHost.isParticipant === 'function'
+        && this.miniGameHost.isParticipant(comp)) {
+        return true;
+      }
+      if (typeof this.miniGameHost.getParticipantCompanions === 'function') {
+        return this.miniGameHost.getParticipantCompanions()
+          .some(candidate => candidate === comp || (candidate?.id && candidate.id === comp.id));
+      }
+      return false;
+    }
     for (const game of this.miniGames) {
       if (game.isOpen?.()) {
         const opponentId = game.activeBoard?.opponent?.id;
@@ -705,6 +816,9 @@ export class Game {
     // Determine target location: either fetchTarget or trailing its buddy
     let target = comp.fetchTarget;
     if (!target) {
+      // The behavior runtime drives companion following (style-specific) when
+      // present; keep the legacy buddy-trail fallback only as a no-runtime path.
+      if (this.behaviorRuntime) return;
       const buddy = (this.player && this.player.id === comp.buddyId)
         ? this.player
         : this.npcs.find(n => n.id === comp.buddyId);
@@ -761,7 +875,16 @@ export class Game {
       this.updatePlayer(dt);
       for (const npc of this.npcs) this.updateNpc(npc, dt);
       for (const comp of this.companions) this.updateCompanion(comp, dt);
-      for (const game of this.miniGames) game.update?.(dt);
+      if (this.behaviorRuntime && typeof this.behaviorRuntime.update === 'function') {
+        this.behaviorRuntime.update(dt * 1000);
+      }
+      if (this.miniGameHost) {
+        if (typeof this.miniGameHost.update === 'function') {
+          this.miniGameHost.update(dt * 1000);
+        }
+      } else {
+        for (const game of this.miniGames) game.update?.(dt);
+      }
     }
     this.updateCamera(dt);
     if (this.destination && this.time > this.destination.until) this.destination = null;
@@ -769,7 +892,7 @@ export class Game {
 
   frame(now) {
     if (!this.running) return;
-    const dt = Math.min((now - this.last) / 1000, 0.05);
+    const dt = frameDelta(now, this.last);
     this.last = now;
     this.update(dt);
     this.renderer.drawFrame(this);
@@ -792,7 +915,8 @@ export class Game {
       const position = this.interpolated(character);
       const footX = (position.x + 0.5) * TILE - this.camera.x;
       const footY = (position.y + 1) * TILE - this.camera.y;
-      const h = character.isCompanion ? COMPANION_HEIGHT : CHARACTER_HEIGHT;
+      const fx = this.resolveFxFor(character);
+      const h = characterVisualHeight(character, fx);
       const width = h * 0.78;
       if (sx >= footX - width / 2 && sx <= footX + width / 2 && sy >= footY - h && sy <= footY) {
         return character;

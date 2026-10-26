@@ -72,7 +72,28 @@
         { "label": "Play again", "className": "primary", "action": "play_again" },
         { "label": "Pack up", "className": "pill quiet", "action": "pack_up" }
       ]
+    },
+    "fetch": {
+      "win": "What a throw! Good fetch.",
+      "loss": "Good try! One more throw?",
+      "draw": "Good fetch! Want to throw again?",
+      "complete": "Good fetch! Want to throw again?",
+      "abandonPrompt": "{name}: Done playing fetch for now?",
+      "abandonChoices": [
+        { "label": "Pack up", "className": "danger", "action": "abandon" },
+        { "label": "Keep Playing", "className": "pill", "action": "keep_playing" }
+      ],
+      "endChoices": [
+        { "label": "Throw again", "className": "primary", "action": "play_again" },
+        { "label": "Pack up", "className": "pill quiet", "action": "pack_up" }
+      ]
     }
+  },
+  "social": {
+    "greet": "hi there!",
+    "chat": "nice day in the park.",
+    "invite": "want to play a game?",
+    "friend": "we should play again soon!"
   },
   "playerMenu": {
     "title": "What would you like to do?",

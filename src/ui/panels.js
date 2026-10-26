@@ -1,10 +1,36 @@
 import { avatarDataUrl, bindAnimatedAvatar } from '../avatar.js';
 import { loadStats } from '../storage.js';
 import { formatCompanionInfo } from '../characters.js';
+import { activeEntries, equip, getEffectForItem, unequip } from '../effects.js';
 
 const $ = id => document.getElementById(id);
 
 export const TABS = ['backpack', 'companions', 'friends', 'stats', 'debug'];
+
+/**
+ * Resolve what clicking a bag item should do, without branching on item ids.
+ * Mini-game metadata supplies the game id for `unfurl` toys.
+ */
+export function itemAction(item, gameMetas = []) {
+  if (!item || typeof item !== 'object') return { type: 'none' };
+  if (item.action === 'throw') return { type: 'throw', item };
+  if (getEffectForItem(item) || item.action === 'equip') return { type: 'equip', item };
+  if (item.action === 'unfurl') {
+    const meta = gameMetas.find(entry => entry && entry.itemId === item.id) || null;
+    return meta
+      ? { type: 'unfurl', gameId: meta.id, meta, item }
+      : { type: 'none', item };
+  }
+  return { type: 'none', item };
+}
+
+function effectBadge(effect) {
+  return effect?.ui?.badge || effect?.badge || '';
+}
+
+function chipLabel(entry) {
+  return entry?.effect?.name || entry?.effect?.id || entry?.itemId || 'effect';
+}
 
 const TAB_CONFIGS = {
   backpack: { toggleId: 'inventory-toggle', panelId: 'inventory-panel', listId: 'inventory-list' },
@@ -32,7 +58,16 @@ export class PanelsUI {
     onSelect,
     onAddNeighbour,
     onNewPark,
-    onToggleWander
+    onToggleWander,
+    onPlayGame,
+    onPackUpGame,
+    isGameOpen,
+    getGameMetas,
+    getHostState,
+    getBehaviorSummary,
+    onGrantEffects,
+    onTriggerNpcGame,
+    onToast
   }) {
     this.getGame = getGame;
     this.getFriends = getFriends;
@@ -51,6 +86,15 @@ export class PanelsUI {
     this.onAddNeighbour = onAddNeighbour;
     this.onNewPark = onNewPark;
     this.onToggleWander = onToggleWander;
+    this.onPlayGame = onPlayGame;
+    this.onPackUpGame = onPackUpGame;
+    this.isGameOpen = isGameOpen;
+    this.getGameMetas = getGameMetas;
+    this.getHostState = getHostState;
+    this.getBehaviorSummary = getBehaviorSummary;
+    this.onGrantEffects = onGrantEffects;
+    this.onTriggerNpcGame = onTriggerNpcGame;
+    this.onToast = onToast;
     this.cardCharacter = null;
     this.activeTab = null;
     this.lastActiveTab = 'backpack';
@@ -138,6 +182,148 @@ export class PanelsUI {
 
   // --- Render Helpers ---
 
+  gameMetas() {
+    return Array.isArray(this.getGameMetas?.()) ? this.getGameMetas() : [];
+  }
+
+  notify(message) {
+    if (typeof this.onToast === 'function') this.onToast(message);
+  }
+
+  isGameOpen(gameId) {
+    if (typeof this.isGameOpen === 'function') return Boolean(this.isGameOpen(gameId));
+    if (gameId === 'tic-tac-toe') return Boolean(this.isTTTOpen?.());
+    if (gameId === 'checkers') return Boolean(this.isCheckersOpen?.());
+    if (gameId === 'chess') return Boolean(this.isChessOpen?.());
+    return false;
+  }
+
+  equippedEntry(character, item) {
+    if (!character) return null;
+    return activeEntries(character, Date.now()).find(entry => (
+      (item.uid && entry.uid === item.uid) || (!item.uid && entry.itemId === item.id) || entry.itemId === item.id
+    )) || null;
+  }
+
+  renderWornStrip(character, list) {
+    if (!character) return;
+    const worn = activeEntries(character, Date.now());
+    if (!worn.length) {
+      const note = document.createElement('p');
+      note.className = 'panel-note worn-empty';
+      note.textContent = 'Nothing worn yet. Effect items you wear show up here.';
+      list.append(note);
+      return;
+    }
+
+    const strip = document.createElement('div');
+    strip.className = 'worn-strip';
+    strip.setAttribute('aria-label', 'Currently worn effects');
+    for (const entry of worn) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'worn-chip';
+      chip.setAttribute('aria-label', `Take off ${chipLabel(entry)}`);
+
+      const icon = document.createElement('span');
+      icon.className = 'worn-chip-icon';
+      icon.textContent = entry.effect?.ui?.icon || '✨';
+
+      const label = document.createElement('span');
+      label.textContent = chipLabel(entry);
+
+      const badgeText = effectBadge(entry.effect);
+      const badge = document.createElement('span');
+      badge.className = 'ui-badge';
+      badge.textContent = badgeText || entry.slot;
+
+      const close = document.createElement('span');
+      close.className = 'worn-chip-x';
+      close.setAttribute('aria-hidden', 'true');
+      close.textContent = '×';
+
+      chip.append(icon, label, badge, close);
+      chip.addEventListener('click', () => this.unequipEntry(character, entry.uid));
+      strip.append(chip);
+    }
+    list.append(strip);
+  }
+
+  activateItem(item) {
+    const action = itemAction(item, this.gameMetas());
+    if (action.type === 'throw') {
+      this.closeMenu();
+      this.onThrowBall?.({ color: item.color });
+      return;
+    }
+    if (action.type === 'equip') {
+      this.toggleEffectItem(item);
+      return;
+    }
+    if (action.type === 'unfurl') {
+      this.openTableGame(item, action.gameId);
+    }
+  }
+
+  openTableGame(item, gameId) {
+    if (this.isGameOpen(gameId)) {
+      this.onPackUpGame?.(gameId);
+      this.renderInventory();
+      return;
+    }
+
+    const friend = this.friendNpcs()[0];
+    if (!friend) {
+      this.notify('Make a friend first — table games are for friends.');
+      return;
+    }
+
+    this.closeMenu();
+    if (typeof this.onPlayGame === 'function') {
+      this.onPlayGame(gameId, friend);
+      return;
+    }
+
+    // Legacy fallback while the host integration is unavailable.
+    if (gameId === 'tic-tac-toe') this.onUnfurlTTT?.(friend);
+    else if (gameId === 'checkers') this.onUnfurlCheckers?.(friend);
+    else if (gameId === 'chess') this.onUnfurlChess?.(friend);
+  }
+
+  toggleEffectItem(item) {
+    const game = this.getGame();
+    const player = game?.player;
+    if (!player) return;
+
+    const current = this.equippedEntry(player, item);
+    const now = (game.time || 0) * 1000;
+    const result = current
+      ? unequip(player, current.uid, now)
+      : equip(player, item, now);
+
+    if (!result?.ok) {
+      this.notify(result?.reason === 'unknown-item'
+        ? 'That item cannot be worn.'
+        : 'That item is not ready to wear.');
+      return;
+    }
+
+    this.onSave?.();
+    this.renderInventory();
+    if (this.cardCharacter === player) this.renderCardEffects(player);
+    this.notify(current ? `Took off ${item.name}.` : `Wearing ${item.name}.`);
+  }
+
+  unequipEntry(character, uid) {
+    const game = this.getGame();
+    const result = unequip(character, uid, (game?.time || 0) * 1000);
+    if (!result?.ok) return;
+    this.onSave?.();
+    this.renderInventory();
+    if (this.cardCharacter === character) this.renderCardEffects(character);
+    this.notify('Took it off.');
+  }
+
   renderInventory() {
     const list = $('inventory-list');
     if (!list) return;
@@ -159,6 +345,8 @@ export class PanelsUI {
     coinRow.textContent = `Wallet: 🪙 ${coins} Coins`;
     list.append(coinRow);
 
+    this.renderWornStrip(game?.player, list);
+
     if (!inventory.length) {
       const empty = document.createElement('p');
       empty.className = 'friend-empty';
@@ -169,6 +357,8 @@ export class PanelsUI {
 
     const fragment = document.createDocumentFragment();
     for (const item of inventory) {
+      const effect = getEffectForItem(item);
+      const worn = this.equippedEntry(game?.player, item);
       const row = document.createElement('div');
       row.className = 'friend-row';
       row.setAttribute('role', 'listitem');
@@ -186,47 +376,107 @@ export class PanelsUI {
       if (item.color) icon.style.textShadow = `0 0 8px ${item.color}`;
 
       const copy = document.createElement('div');
+      copy.className = 'friend-copy';
       const name = document.createElement('strong');
       name.textContent = item.name;
       const desc = document.createElement('small');
-      desc.textContent = item.description;
+      desc.textContent = effect?.ui?.summary || item.description || '';
       copy.append(name, desc);
 
-      row.addEventListener('click', () => {
-        if (item.id === 'ball') {
-          this.closeMenu();
-          this.onThrowBall?.({ color: item.color });
-        } else if (item.id === 'tic-tac-toe') {
-          this.closeMenu();
-          if (this.isTTTOpen?.()) {
-            this.onPackUpTTT?.();
-          } else {
-            const friend = this.friendNpcs()[0] || game.npcs[0];
-            this.onUnfurlTTT?.(friend);
-          }
-        } else if (item.id === 'checkers') {
-          this.closeMenu();
-          if (this.isCheckersOpen?.()) {
-            this.onPackUpCheckers?.();
-          } else {
-            const friend = this.friendNpcs()[0] || game.npcs[0];
-            this.onUnfurlCheckers?.(friend);
-          }
-        } else if (item.id === 'chess') {
-          this.closeMenu();
-          if (this.isChessOpen?.()) {
-            this.onPackUpChess?.();
-          } else {
-            const friend = this.friendNpcs()[0] || game.npcs[0];
-            this.onUnfurlChess?.(friend);
-          }
-        }
-      });
+      if (effect) {
+        const meta = document.createElement('span');
+        meta.className = 'item-effect-line';
+        const badge = document.createElement('span');
+        badge.className = 'ui-badge';
+        badge.textContent = effectBadge(effect) || effect.slot;
+        const state = document.createElement('span');
+        state.className = worn ? 'item-state worn' : 'item-state';
+        state.textContent = worn ? 'worn · tap to take off' : `wear · ${effect.slot}`;
+        meta.append(badge, state);
+        copy.append(meta);
+      }
 
       row.append(icon, copy);
+      row.addEventListener('click', () => this.activateItem(item));
       fragment.append(row);
     }
     list.append(fragment);
+  }
+
+  makeBuddySlot(character) {
+    const slot = document.createElement('span');
+    slot.className = 'buddy-slot';
+
+    const label = document.createElement('span');
+    label.className = 'buddy-slot-label';
+    label.textContent = 'buddy slot';
+
+    const buddyEntries = activeEntries(character, Date.now()).filter(entry => entry.slot === 'buddy');
+    slot.append(label);
+    if (!buddyEntries.length) {
+      const empty = document.createElement('span');
+      empty.className = 'item-state';
+      empty.textContent = 'empty';
+      slot.append(empty);
+      return slot;
+    }
+    for (const entry of buddyEntries) {
+      const chip = document.createElement('span');
+      chip.className = 'effect-chip';
+      chip.textContent = `${entry.effect?.ui?.icon || '✨'} ${chipLabel(entry)}`;
+      const badge = document.createElement('span');
+      badge.className = 'ui-badge';
+      badge.textContent = effectBadge(entry.effect) || entry.slot;
+      chip.append(badge);
+      slot.append(chip);
+    }
+    return slot;
+  }
+
+  renderCardEffects(character) {
+    const card = $('npc-card');
+    if (!card || !character) return;
+
+    let host = $('npc-effects');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'npc-effects';
+      host.className = 'effect-list';
+      host.setAttribute('aria-label', 'Active effects');
+      const actions = card.querySelector('.npc-card-actions');
+      if (actions) card.insertBefore(host, actions);
+      else card.append(host);
+    }
+    host.replaceChildren();
+
+    const entries = activeEntries(character, Date.now());
+    if (!entries.length) {
+      const note = document.createElement('span');
+      note.className = 'item-state';
+      note.textContent = 'no effects worn';
+      host.append(note);
+      return;
+    }
+
+    for (const entry of entries) {
+      const chip = document.createElement('span');
+      chip.className = 'effect-chip';
+      const icon = document.createElement('span');
+      icon.textContent = entry.effect?.ui?.icon || '✨';
+      const label = document.createElement('span');
+      label.textContent = chipLabel(entry);
+      const badge = document.createElement('span');
+      badge.className = 'ui-badge';
+      badge.textContent = effectBadge(entry.effect) || entry.slot;
+      chip.append(icon, label, badge);
+      if (entry.inherited) {
+        const inherited = document.createElement('span');
+        inherited.className = 'item-state';
+        inherited.textContent = 'from owner';
+        chip.append(inherited);
+      }
+      host.append(chip);
+    }
   }
 
   renderCompanion() {
@@ -267,23 +517,19 @@ export class PanelsUI {
       image.alt = companion.name;
 
       const copy = document.createElement('div');
+      copy.className = 'friend-copy';
       const name = document.createElement('strong');
       name.textContent = `${companion.name} (${info.type})`;
       const sub = document.createElement('small');
       sub.textContent = `${info.class} · Active follower (Click to inspect / bench)`;
-      copy.append(name, sub);
+      copy.append(name, sub, this.makeBuddySlot(companion));
 
       row.addEventListener('click', () => {
         if (activeCompanions.length > 1) {
-          // Allow toggling between active and stabled
+          // Allow toggling between active and stabled, keeping gear and inventory.
           game.companions = game.companions.filter(c => c.id !== companion.id);
           if (!game.player.stabledCompanions) game.player.stabledCompanions = [];
-          game.player.stabledCompanions.push({
-            id: companion.id,
-            name: companion.name,
-            recipe: companion.recipe,
-            buddyId: 'player'
-          });
+          game.player.stabledCompanions.push({ ...companion, buddyId: 'player' });
           this.renderCompanion();
           this.onSave?.();
         } else {
@@ -316,27 +562,25 @@ export class PanelsUI {
         image.alt = stabled.name;
 
         const copy = document.createElement('div');
+        copy.className = 'friend-copy';
         const name = document.createElement('strong');
         name.textContent = `${stabled.name} (${info.type})`;
         const sub = document.createElement('small');
         sub.textContent = `${info.class} · Resting in collection`;
-        copy.append(name, sub);
+        copy.append(name, sub, this.makeBuddySlot(stabled));
 
         row.addEventListener('click', () => {
           if (activeCompanions.length >= 3) {
-            // Swap with first active companion
+            // Swap with first active companion, keeping gear and inventory.
             const removed = activeCompanions[0];
             game.companions = game.companions.filter(c => c.id !== removed.id);
-            game.player.stabledCompanions.push({
-              id: removed.id,
-              name: removed.name,
-              recipe: removed.recipe,
-              buddyId: 'player'
-            });
+            game.player.stabledCompanions.push({ ...removed, buddyId: 'player' });
           }
           // Remove from stabled and activate
           game.player.stabledCompanions = game.player.stabledCompanions.filter(c => c.id !== stabled.id);
           const activated = game.makeCompanion(stabled, game.player);
+          if (Array.isArray(stabled.inventory)) activated.inventory = stabled.inventory;
+          if (Array.isArray(stabled.equipped)) activated.equipped = stabled.equipped;
           game.companions.push(activated);
           this.renderCompanion();
           this.onSave?.();
@@ -483,6 +727,85 @@ export class PanelsUI {
     if (game && wanderLabel) {
       wanderLabel.textContent = game.wander ? 'Neighbours are wandering (press Enter to pause)' : 'Neighbours are staying put (press Enter to resume)';
     }
+    this.renderDebugExtras();
+  }
+
+  renderDebugExtras() {
+    const list = $('debug-actions');
+    if (!list) return;
+    list.querySelectorAll('[data-debug-dynamic]').forEach(row => row.remove());
+
+    const fragment = document.createDocumentFragment();
+    const addRow = ({ id, icon, title, detail, onClick }) => {
+      const row = document.createElement('div');
+      row.className = 'friend-row debug-row';
+      row.dataset.debugDynamic = 'true';
+      row.id = id;
+      row.setAttribute('role', 'listitem');
+      row.tabIndex = 0;
+
+      const iconEl = document.createElement('span');
+      iconEl.className = 'debug-icon';
+      iconEl.textContent = icon;
+
+      const copy = document.createElement('div');
+      copy.className = 'friend-copy';
+      const strong = document.createElement('strong');
+      strong.textContent = title;
+      const small = document.createElement('small');
+      small.textContent = detail;
+      copy.append(strong, small);
+      row.append(iconEl, copy);
+
+      if (typeof onClick === 'function') {
+        row.addEventListener('click', onClick);
+      } else {
+        row.removeAttribute('tabindex');
+        row.classList.add('debug-readonly');
+      }
+      fragment.append(row);
+      return row;
+    };
+
+    addRow({
+      id: 'debug-grant-effects',
+      icon: '✨',
+      title: 'Grant all effect items',
+      detail: 'Adds the ten effect items to your bag',
+      onClick: () => this.onGrantEffects?.()
+    });
+
+    addRow({
+      id: 'debug-npc-game',
+      icon: '🎲',
+      title: 'NPC Tic-Tac-Toe',
+      detail: 'Ask two neighbours to start a game',
+      onClick: () => this.onTriggerNpcGame?.()
+    });
+
+    const hostState = this.getHostState?.() || null;
+    const hostDetail = hostState?.active
+      ? `${hostState.title || hostState.gameId} · ${hostState.phase || 'open'}${hostState.settled ? ' · settled' : ''}`
+      : 'No mini-game open';
+    addRow({
+      id: 'debug-host-state',
+      icon: '🎮',
+      title: 'Game session',
+      detail: hostDetail
+    });
+
+    const behavior = this.getBehaviorSummary?.() || null;
+    const behaviorDetail = behavior
+      ? `${behavior.actors?.length || 0} active behaviors · ${behavior.activeNpcGames || 0} NPC games · ${behavior.pairRecords || 0} pair records`
+      : 'Behavior runtime not ready';
+    addRow({
+      id: 'debug-behavior-state',
+      icon: '🧠',
+      title: 'Behavior summary',
+      detail: behaviorDetail
+    });
+
+    list.append(fragment);
   }
 
   // --- Character Inspection Card ---
@@ -515,6 +838,7 @@ export class PanelsUI {
 
     $('npc-shuffle').hidden = isPlayer || isCompanion;
     $('npc-remove').hidden = isPlayer || isCompanion;
+    this.renderCardEffects(character);
     $('npc-card').hidden = false;
   }
 
@@ -550,7 +874,7 @@ export class PanelsUI {
     if (!cfg) return [];
     const container = $(cfg.listId);
     if (!container) return [];
-    const rows = Array.from(container.querySelectorAll('.friend-row'));
+    const rows = Array.from(container.querySelectorAll('.friend-row, .worn-chip'));
     if (rows.length) return rows;
     return Array.from(container.querySelectorAll('button'));
   }
@@ -562,12 +886,13 @@ export class PanelsUI {
     if (this.focusedIndex < 0) this.focusedIndex = 0;
     if (this.focusedIndex >= items.length) this.focusedIndex = items.length - 1;
 
-    document.querySelectorAll('.friend-row.nav-focused').forEach(r => r.classList.remove('nav-focused'));
+    document.querySelectorAll('.friend-row.nav-focused, .worn-chip.nav-focused, .effect-chip.nav-focused').forEach(r => r.classList.remove('nav-focused'));
 
     const item = items[this.focusedIndex];
     if (item instanceof HTMLButtonElement) {
-      item.closest('.friend-row')?.classList.add('nav-focused');
-      item.closest('.friend-row')?.scrollIntoView?.({ block: 'nearest' });
+      const row = item.closest('.friend-row') || item;
+      row.classList.add('nav-focused');
+      row.scrollIntoView?.({ block: 'nearest' });
     } else if (item) {
       item.classList.add('nav-focused');
       item.scrollIntoView?.({ block: 'nearest' });

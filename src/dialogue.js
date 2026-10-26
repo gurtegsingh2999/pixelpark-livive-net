@@ -6,6 +6,36 @@ function interpolate(template, vars) {
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? '');
 }
 
+const LEGACY_GAME_FLAGS = Object.freeze([
+  { id: 'tic-tac-toe', flag: 'canPlayTicTacToe', labelKey: 'playTttLabel', fallback: 'Play Tic-Tac-Toe' },
+  { id: 'checkers', flag: 'canPlayCheckers', labelKey: 'playCheckersLabel', fallback: 'Play Checkers' },
+  { id: 'chess', flag: 'canPlayChess', labelKey: 'playChessLabel', fallback: 'Play Chess' }
+]);
+
+/**
+ * Normalise the generic `games` option while accepting the legacy per-game
+ * booleans. Enabled entries keep caller order; the first one becomes primary.
+ *
+ * @param {{ games?: Array<{id:string,label?:string,enabled?:boolean}>, canPlayTicTacToe?: boolean, canPlayCheckers?: boolean, canPlayChess?: boolean }} options
+ * @param {object} [friendSpec] data/dialogues.json `friend` block
+ * @returns {Array<{ id: string, label: string, primary: boolean }>}
+ */
+export function resolveGameChoices(options = {}, friendSpec = {}) {
+  const provided = Array.isArray(options.games) ? options.games : [];
+  const list = provided.length
+    ? provided
+        .filter(game => game && typeof game.id === 'string' && game.enabled !== false)
+        .map(game => ({ id: game.id, label: game.label || game.id }))
+    : LEGACY_GAME_FLAGS
+        .filter(entry => options[entry.flag])
+        .map(entry => ({
+          id: entry.id,
+          label: friendSpec[entry.labelKey] || entry.fallback
+        }));
+
+  return list.map((game, index) => ({ ...game, primary: index === 0 }));
+}
+
 export class DialogueManager {
   constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame, getGame } = {}) {
     this.dialogueNpc = null;
@@ -72,7 +102,12 @@ export class DialogueManager {
     }, { capture: true });
   }
 
-  open(character, isFriend, { canPlayTicTacToe = false, canPlayCheckers = false, canPlayChess = false } = {}) {
+  open(character, isFriend, {
+    games = null,
+    canPlayTicTacToe = false,
+    canPlayCheckers = false,
+    canPlayChess = false
+  } = {}) {
     if (!character || !this.container) return;
     this.dialogueNpc = character;
     document.body.classList.add('dialogue-open');
@@ -93,47 +128,27 @@ export class DialogueManager {
 
     const npc = character;
     if (isFriend) {
-      const choices = [];
-      if (canPlayTicTacToe) {
-        choices.push({
-          label: dialogueData.dialogues.friend.playTttLabel,
-          className: 'primary',
-          onClick: () => {
-            const opponent = this.dialogueNpc;
-            this.close();
-            this.onPlayGame?.('tic-tac-toe', opponent);
-          }
-        });
-      }
-      if (canPlayCheckers) {
-        choices.push({
-          label: dialogueData.dialogues.friend.playCheckersLabel || 'Play Checkers',
-          className: choices.length ? 'pill' : 'primary',
-          onClick: () => {
-            const opponent = this.dialogueNpc;
-            this.close();
-            this.onPlayGame?.('checkers', opponent);
-          }
-        });
-      }
-      if (canPlayChess) {
-        choices.push({
-          label: dialogueData.dialogues.friend.playChessLabel || 'Play Chess',
-          className: choices.length ? 'pill' : 'primary',
-          onClick: () => {
-            const opponent = this.dialogueNpc;
-            this.close();
-            this.onPlayGame?.('chess', opponent);
-          }
-        });
-      }
+      const friendSpec = dialogueData.dialogues.friend;
+      const gameChoices = resolveGameChoices(
+        { games, canPlayTicTacToe, canPlayCheckers, canPlayChess },
+        friendSpec
+      );
+      const choices = gameChoices.map(game => ({
+        label: game.label,
+        className: game.primary ? 'primary' : 'pill',
+        onClick: () => {
+          const opponent = this.dialogueNpc;
+          this.close();
+          this.onPlayGame?.(game.id, opponent);
+        }
+      }));
       choices.push({
-        label: dialogueData.dialogues.friend.closeLabel,
+        label: friendSpec.closeLabel,
         className: choices.length ? 'pill quiet' : 'primary',
         onClick: () => this.close()
       });
 
-      this.setBeat(interpolate(dialogueData.dialogues.friend.text, { name: npc.name }), choices);
+      this.setBeat(interpolate(friendSpec.text, { name: npc.name }), choices);
       return;
     }
 

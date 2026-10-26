@@ -1336,6 +1336,144 @@ body.dialogue-open .topbar {
   color: var(--accent-ink);
 }
 
+/* --- Effect chips, worn strip, and debug readouts --- */
+
+.worn-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px 0;
+  grid-column: 1 / -1;
+}
+
+.worn-empty {
+  margin: 0 0 10px 0;
+  grid-column: 1 / -1;
+}
+
+.worn-chip,
+.effect-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(22, 40, 26, 0.75);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.worn-chip {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.worn-chip:hover,
+.worn-chip:focus-visible,
+.effect-chip:focus-within {
+  border-color: var(--line-strong);
+}
+
+.worn-chip.nav-focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.worn-chip-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.worn-chip-x {
+  color: var(--muted);
+  margin-left: 1px;
+}
+
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(182, 227, 124, 0.16);
+  border: 1px solid rgba(182, 227, 124, 0.28);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.item-effect-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.item-state {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.item-state.worn {
+  color: var(--accent);
+}
+
+.effect-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 0 2px;
+}
+
+.buddy-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.buddy-slot-label {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: lowercase;
+}
+
+.friend-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.debug-icon {
+  font-size: 24px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+}
+
+.debug-row.debug-readonly {
+  opacity: 0.8;
+  cursor: default;
+}
+
+.debug-row.debug-readonly:hover {
+  border-color: var(--line);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

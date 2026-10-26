@@ -9,9 +9,9 @@ import { FetchMiniGame } from '../src/games/fetch.js';
 import { recordGameResult, loadStats } from '../src/storage.js';
 import { rollReward, applyReward } from '../src/rewards.js';
 
-test('createStarterInventory yields ball, tic-tac-toe, checkers, and chess', () => {
+test('createStarterInventory yields ball, tic-tac-toe, checkers, chess, and the headline effects', () => {
   const inv = createStarterInventory();
-  assert.equal(inv.length, 4);
+  assert.equal(inv.length, 7);
   const ball = inv.find(i => i.id === 'ball');
   const ttt = inv.find(i => i.id === 'tic-tac-toe');
   const checkers = inv.find(i => i.id === 'checkers');
@@ -21,6 +21,12 @@ test('createStarterInventory yields ball, tic-tac-toe, checkers, and chess', () 
   assert.ok(checkers);
   assert.ok(chess);
   assert.ok(BALL_COLORS.includes(ball.color));
+
+  const effects = inv.filter(i => i.kind === 'effect');
+  assert.deepEqual(
+    effects.map(i => i.id).sort(),
+    ['big-o-bracelet', 'chamo-clip', 'teleport-tricorder']
+  );
 });
 
 test('createCompanionRecipe creates valid companion recipe', () => {

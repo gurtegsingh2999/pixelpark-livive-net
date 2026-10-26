@@ -3,11 +3,13 @@ import { spectatorOffsets } from '../characters.js';
 import { recordGameResult } from '../storage.js';
 
 export class TicTacToeMiniGame {
-  constructor({ game, onToast, onGameEnd, onAbandonPrompt } = {}) {
+  constructor({ game, onToast, onGameEnd, onAbandonPrompt, recordResult } = {}) {
     this.game = game;
     this.onToast = onToast || (() => {});
     this.onGameEnd = onGameEnd || (() => {});
     this.onAbandonPrompt = onAbandonPrompt || (() => {});
+    // Injectable so contract adapters can leave stats/rewards to the host.
+    this.recordResult = recordResult || recordGameResult;
     this.activeBoard = null;
     this.nextStarter = 'player'; // Alternate starting player between rounds
     this.abandonPromptActive = false;
@@ -57,14 +59,26 @@ export class TicTacToeMiniGame {
     return null;
   }
 
-  unfurlBoard(opponent) {
+  unfurlBoard(opponent, placement = null) {
     if (!this.game?.player) return false;
     const player = this.game.player;
-    const spot = this.findPlacementSpot(player.x, player.y);
+    let spot;
 
-    if (!spot) {
-      this.onToast('Need open ground with room to stand around to lay out Tic-Tac-Toe.');
-      return false;
+    if (placement) {
+      // Contract hosts validate and pass an explicit origin; honour it.
+      const originX = placement.originX ?? placement.x;
+      const originY = placement.originY ?? placement.y;
+      if (!Number.isInteger(originX) || !Number.isInteger(originY) || !this.canPlaceAt(originX, originY)) {
+        this.onToast('Need open ground with room to stand around to lay out Tic-Tac-Toe.');
+        return false;
+      }
+      spot = { originX, originY };
+    } else {
+      spot = this.findPlacementSpot(player.x, player.y);
+      if (!spot) {
+        this.onToast('Need open ground with room to stand around to lay out Tic-Tac-Toe.');
+        return false;
+      }
     }
 
     const starter = this.nextStarter;
@@ -372,7 +386,7 @@ export class TicTacToeMiniGame {
       else if (winner === 'O') resultOutcome = 'loss';
 
       const opponent = this.activeBoard.opponent;
-      recordGameResult({
+      this.recordResult({
         opponentId: opponent?.id,
         opponentName: opponent?.name,
         result: resultOutcome

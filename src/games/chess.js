@@ -92,11 +92,13 @@ const PST_TABLES = {
 };
 
 export class ChessMiniGame {
-  constructor({ game, onToast, onGameEnd, onAbandonPrompt } = {}) {
+  constructor({ game, onToast, onGameEnd, onAbandonPrompt, recordResult } = {}) {
     this.game = game;
     this.onToast = onToast || (() => {});
     this.onGameEnd = onGameEnd || (() => {});
     this.onAbandonPrompt = onAbandonPrompt || (() => {});
+    // Injectable so contract adapters can leave stats/rewards to the host.
+    this.recordResult = recordResult || recordGameResult;
     this.activeBoard = null;
     this.boardSize = CHESS_BOARD_SIZE;
     this.nextStarter = 'player'; // White is player, Black is opponent
@@ -211,14 +213,26 @@ export class ChessMiniGame {
     }
   }
 
-  unfurlBoard(opponent) {
+  unfurlBoard(opponent, placement = null) {
     if (!this.game?.player) return false;
     const player = this.game.player;
-    const spot = this.findPlacementSpot(player.x, player.y);
+    let spot;
 
-    if (!spot) {
-      this.onToast('Need clear open ground to lay out the 8x8 Chessboard.');
-      return false;
+    if (placement) {
+      // Contract hosts validate and pass an explicit origin; honour it.
+      const originX = placement.originX ?? placement.x;
+      const originY = placement.originY ?? placement.y;
+      if (!Number.isInteger(originX) || !Number.isInteger(originY) || !this.canPlaceAt(originX, originY)) {
+        this.onToast('Need clear open ground to lay out the 8x8 Chessboard.');
+        return false;
+      }
+      spot = { originX, originY };
+    } else {
+      spot = this.findPlacementSpot(player.x, player.y);
+      if (!spot) {
+        this.onToast('Need clear open ground to lay out the 8x8 Chessboard.');
+        return false;
+      }
     }
 
     // Player plays White (starter is White in standard chess)
@@ -552,7 +566,7 @@ export class ChessMiniGame {
     if (winner === 'player') result = 'win';
     else if (winner === 'opponent') result = 'loss';
 
-    recordGameResult({ opponentId, opponentName, result });
+    this.recordResult({ opponentId, opponentName, result });
     this.onGameEnd(winner, opponent);
   }
 

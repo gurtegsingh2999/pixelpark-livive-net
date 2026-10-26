@@ -28,6 +28,126 @@
       "action": "unfurl",
       "description": "Unfurl an 8x8 chess board on the grass.",
       "icon": "♟️"
+    },
+    "big-o-bracelet": {
+      "id": "big-o-bracelet",
+      "name": "Big-O Bracelet",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "charm",
+      "effect": "big-o",
+      "owners": ["player", "npc"],
+      "icon": "💪",
+      "description": "Everything about you goes 1.5x bigger.",
+      "ui": { "summary": "1.5x bigger everything.", "badge": "1.5x", "slotLabel": "Charm" }
+    },
+    "chamo-clip": {
+      "id": "chamo-clip",
+      "name": "Chamo Clip",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "face",
+      "effect": "chamo",
+      "owners": ["player", "npc"],
+      "icon": "🫥",
+      "description": "Almost invisible, but your nameplate still shows.",
+      "ui": { "summary": "almost invisible, still yourself.", "badge": "0.1x", "slotLabel": "Face" }
+    },
+    "teleport-tricorder": {
+      "id": "teleport-tricorder",
+      "name": "Teleport Tricorder",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "hand",
+      "effect": "tricorder",
+      "owners": ["player", "npc"],
+      "icon": "🛸",
+      "description": "Blink tile to tile. Walls still count.",
+      "ui": { "summary": "blink from tile to tile.", "badge": "blink", "slotLabel": "Hand" }
+    },
+    "hover-halo": {
+      "id": "hover-halo",
+      "name": "Hover Halo",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "head",
+      "effect": "hover-halo",
+      "owners": ["player", "npc"],
+      "icon": "😇",
+      "description": "Hover a little above the grass.",
+      "ui": { "summary": "hover a little above the grass.", "badge": "float", "slotLabel": "Head" }
+    },
+    "prism-pin": {
+      "id": "prism-pin",
+      "name": "Prism Pin",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "charm",
+      "effect": "prism-pin",
+      "owners": ["player", "npc"],
+      "icon": "💎",
+      "description": "A slow rainbow shimmer follows you.",
+      "ui": { "summary": "a slow rainbow shimmer.", "badge": "shimmer", "slotLabel": "Charm" }
+    },
+    "echo-bell": {
+      "id": "echo-bell",
+      "name": "Echo Bell",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "charm",
+      "effect": "echo-bell",
+      "owners": ["player", "npc"],
+      "icon": "🔔",
+      "description": "Leave a few fading echoes when you walk.",
+      "ui": { "summary": "fading echoes when you move.", "badge": "echo", "slotLabel": "Charm" }
+    },
+    "bouncy-boots": {
+      "id": "bouncy-boots",
+      "name": "Bouncy Boots",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "feet",
+      "effect": "bouncy-boots",
+      "owners": ["player", "npc"],
+      "icon": "👟",
+      "description": "Bounce along 25% faster with a soft landing.",
+      "ui": { "summary": "walk 25% faster, land bouncy.", "badge": "bouncy", "slotLabel": "Feet" }
+    },
+    "buddy-cape": {
+      "id": "buddy-cape",
+      "name": "Buddy Cape",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "back",
+      "effect": "buddy-cape",
+      "owners": ["player", "npc"],
+      "icon": "🦸",
+      "description": "Your party pals get a little bigger and bluer.",
+      "ui": { "summary": "share the cape with your party.", "badge": "party", "slotLabel": "Back" }
+    },
+    "glowworm-jar": {
+      "id": "glowworm-jar",
+      "name": "Glowworm Jar",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "hand",
+      "effect": "glowworm-jar",
+      "owners": ["player", "npc"],
+      "icon": "🫙",
+      "description": "A soft pulsing glow keeps you company.",
+      "ui": { "summary": "a soft pulsing glow.", "badge": "glow", "slotLabel": "Hand" }
+    },
+    "lucky-clover": {
+      "id": "lucky-clover",
+      "name": "Lucky Clover",
+      "kind": "effect",
+      "action": "equip",
+      "slot": "charm",
+      "effect": "lucky-clover",
+      "owners": ["player", "npc"],
+      "icon": "🍀",
+      "description": "+1 coin every time you earn a reward.",
+      "ui": { "summary": "+1 coin when you earn a reward.", "badge": "+1 coin", "slotLabel": "Charm" }
     }
   },
   "starter": [
@@ -43,6 +163,15 @@
     },
     {
       "id": "chess"
+    },
+    {
+      "id": "big-o-bracelet"
+    },
+    {
+      "id": "chamo-clip"
+    },
+    {
+      "id": "teleport-tricorder"
     }
   ]
 }
