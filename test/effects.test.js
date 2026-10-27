@@ -215,7 +215,7 @@ test('composition multiplies scale/alpha and adds offsets/rotation', () => {
   const faded = resolveFx(chamoCharacter);
   assert.equal(faded.alpha, 0.4);
   assert.equal(composeRenderTransform({ alpha: 0.5 }, faded).alpha, 0.2);
-  assert.deepEqual(faded.outline, { color: '#d9fbe5', width: 1.5, alpha: 0.5 });
+  assert.equal(faded.outline, null);
 });
 
 test('stacking effects add their stats', () => {

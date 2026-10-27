@@ -27,6 +27,7 @@
  */
 
 import { DOWN, RIGHT, UP, LEFT } from '../facing.js';
+import { hashString } from '../world.js';
 
 const DIRECTIONS = Object.freeze([
   { dx: 0, dy: 1, direction: DOWN },
@@ -34,6 +35,43 @@ const DIRECTIONS = Object.freeze([
   { dx: 0, dy: -1, direction: UP },
   { dx: -1, dy: 0, direction: LEFT }
 ]);
+
+// Stable follow slots around a buddy. Index comes from the companion's position
+// in the (sorted) sibling list, so two buddies never choose the same tile.
+const FOLLOW_OFFSETS = Object.freeze([
+  { x: 1, y: 0 },
+  { x: -1, y: 0 },
+  { x: 0, y: 1 },
+  { x: 0, y: -1 },
+  { x: 2, y: 0 },
+  { x: -2, y: 0 },
+  { x: 0, y: 2 },
+  { x: 0, y: -2 }
+]);
+
+function siblingIndex(ctx, actor) {
+  const blackboard = ctx.blackboard;
+  if (!actor || !blackboard || typeof blackboard.all !== 'function') return 0;
+  const siblings = blackboard.all()
+    .filter(candidate => candidate
+      && candidate.isCompanion
+      && candidate.buddyId === actor.buddyId)
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const index = siblings.findIndex(candidate => candidate.id === actor.id);
+  return index >= 0 ? index : 0;
+}
+
+function followOffset(ctx, actor, params) {
+  if (params.followOffset === false) return null;
+  const index = siblingIndex(ctx, actor);
+  if (index === 0 && params.offset) return params.offset;
+  return FOLLOW_OFFSETS[index % FOLLOW_OFFSETS.length];
+}
+
+function timingJitter(actor, salt = 0) {
+  const hash = hashString(`${actor?.id || 'companion'}:${salt}`);
+  return 0.82 + (hash % 37) / 100; // 0.82 .. 1.18
+}
 
 export const ACTION_NAMES = Object.freeze([
   'wait',
@@ -139,10 +177,12 @@ function followTarget(ctx) {
   if (!actor || !point) return { done: true, reason: 'no-target' };
 
   if (stateMemory.nextStepAt == null) stateMemory.nextStepAt = now;
-  if (stateMemory.nextRoamAt == null) stateMemory.nextRoamAt = now + (params.roamIntervalMs ?? 3000);
+  if (stateMemory.nextRoamAt == null) {
+    stateMemory.nextRoamAt = now + (params.roamIntervalMs ?? 3000) * timingJitter(actor, 'roam');
+  }
   if (params.stepDurationMs != null) stateMemory.stepDurationMs = params.stepDurationMs;
 
-  const offset = params.offset || null;
+  const offset = followOffset(ctx, actor, params);
   const desired = offset
     ? { x: clampTile(point.x + (offset.x || 0)), y: clampTile(point.y + (offset.y || 0)) }
     : point;
@@ -163,7 +203,7 @@ function followTarget(ctx) {
   const roamChance = params.roamChance ?? 0;
   if (roamChance > 0 && buddyDistance <= (params.distance ?? 1.5) + (params.roamRadius ?? 2) &&
       now >= stateMemory.nextRoamAt) {
-    stateMemory.nextRoamAt = now + (params.roamIntervalMs ?? 3000);
+    stateMemory.nextRoamAt = now + (params.roamIntervalMs ?? 3000) * timingJitter(actor, 'roam');
     if (rng() < roamChance) {
       const step = shuffled(DIRECTIONS, rng)[0];
       if (tryStep(ctx, step.dx, step.dy, params.stepDurationMs)) {
@@ -176,7 +216,7 @@ function followTarget(ctx) {
   if (actor.moving) return { done: false };
   if (now < stateMemory.nextStepAt) return { done: false };
 
-  const stepInterval = params.stepIntervalMs ?? 700;
+  const stepInterval = (params.stepIntervalMs ?? 700) * timingJitter(actor, 'step');
   stateMemory.nextStepAt = now + stepInterval;
 
   const dx = desired.x - actor.x;

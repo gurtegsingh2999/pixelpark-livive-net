@@ -144,18 +144,14 @@
         "tint": null,
         "aura": [],
         "trail": [],
-        "outline": {
-          "color": "#d9fbe5",
-          "width": 1.5,
-          "alpha": 0.5
-        }
+        "outline": null
       },
       "motion": null,
       "stats": {
         "stepDurationScale": 1,
         "coinBonus": 0
       },
-      "vfx": ["chamo.fade", "chamo.outline"],
+      "vfx": ["chamo.fade"],
       "transition": {
         "equipMs": 260,
         "unequipMs": 220,

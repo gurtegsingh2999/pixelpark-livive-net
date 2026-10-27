@@ -96,6 +96,42 @@ test('follow runtime applies style params and targets the companion buddy', () =
   assert.equal(byId.get('bones').params.cadence, 'shamble');
 });
 
+test('sibling companions take distinct follow slots and jittered cadence', () => {
+  const player = { id: 'player', x: 20, y: 20, isPlayer: true };
+  const a = { id: 'comp-a', x: 20, y: 20, isCompanion: true, buddyId: 'player', recipe: { style: 'cat' } };
+  const b = { id: 'comp-b', x: 20, y: 20, isCompanion: true, buddyId: 'player', recipe: { style: 'cat' } };
+  const blackboard = createBlackboard({ actors: [a, b], player, styleFamilies: config.styleFamilies });
+
+  const run = actor => {
+    const steps = [];
+    const stateMemory = {};
+    actions.followTarget({
+      actor,
+      target: player,
+      params: { distance: 1.5, leash: 10, stepIntervalMs: 700, stepDurationMs: 260 },
+      stateMemory,
+      now: 0,
+      rng: () => 0.5,
+      blackboard,
+      tryStep: (mover, dx, dy) => {
+        steps.push({ dx, dy });
+        return true;
+      },
+      findPath: () => []
+    });
+    return { steps, nextStepAt: stateMemory.nextStepAt };
+  };
+
+  const first = run(a);
+  const second = run(b);
+  assert.deepEqual(first.steps[0], { dx: 1, dy: 0 }, 'first buddy takes the right-side slot');
+  assert.deepEqual(second.steps[0], { dx: -1, dy: 0 }, 'second buddy takes the left-side slot');
+  for (const result of [first, second]) {
+    assert.ok(result.nextStepAt >= 700 * 0.82);
+    assert.ok(result.nextStepAt <= 700 * 1.18);
+  }
+});
+
 test('selectors cover nearest, byId, mutualFriend, buddy, and midpoint', () => {
   const player = { id: 'player', x: 5, y: 6, isPlayer: true };
   const a = { id: 'a', x: 5, y: 5, recipe: { style: 'voxel-art' } };

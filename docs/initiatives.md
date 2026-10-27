@@ -453,6 +453,8 @@ runtime = choose > arbitrate > run state > advance/complete/interrupt
 - Reward companions had no behavior entry until reload — rewards and companion bench/activate now resync the behavior world.
 - Scenery on mini-game boards stayed visible — host hidden zones now include the full board footprint with a 2-tile visual margin.
 - NPC mini-games yanked the player next to the board — the human stays put and gets a 5-second "want to watch?" prompt; Watch walks them over instead of teleporting.
+- Chamo Clip drew an oval outline — removed; it is now a clean 60% fade.
+- Buddies converged on the same follow tile — companions now use stable distinct follow slots (right/left/down/up ring) plus per-actor cadence jitter.
 
 **Known gaps / follow-ups**
 
