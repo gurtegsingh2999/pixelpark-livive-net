@@ -800,6 +800,8 @@ export const socialActions = Object.freeze(createSocialActions());
  * @param {(message:string)=>void} [options.onToast]
  * @param {boolean} [options.notifyGames=true]
  * @param {(emote:string, detail:object)=>string} [options.emoteFor]
+ * @param {(detail:{actorId, key, text, visualOnly?:boolean})=>void} [options.onSay] every
+ *   `say` event, bubble or not (voices hook its speech in here)
  */
 export function bridgeBehaviorEvents(runtime, bubbles, {
   host = null,
@@ -807,7 +809,8 @@ export function bridgeBehaviorEvents(runtime, bubbles, {
   notifyGames = true,
   onGameStart = null,
   onGameEnd = null,
-  emoteFor = null
+  emoteFor = null,
+  onSay = null
 } = {}) {
   let lastGame = null;
 
@@ -817,6 +820,7 @@ export function bridgeBehaviorEvents(runtime, bubbles, {
     const detail = entry.detail && typeof entry.detail === 'object' ? entry.detail : entry;
 
     if (type === 'say') {
+      if (detail.actorId != null && detail.text != null) onSay?.(detail);
       if (detail.bubble === false) return null;
       const actorId = detail.actorId;
       const text = detail.text;

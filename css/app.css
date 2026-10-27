@@ -176,6 +176,13 @@ body.wizard-open canvas#world {
   display: inline;
 }
 
+/* The voices pill shows its label only while hd voices download. */
+.topbar-actions .pill.voices-pill.loading .label {
+  display: inline;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 .topbar-actions .pill.active-tab .friend-count {
   background: rgba(16, 26, 15, 0.2);
   color: var(--accent-ink);

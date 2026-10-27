@@ -105,6 +105,7 @@
       { "id": "companions", "label": "🐾 Companions", "className": "pill" },
       { "id": "friends", "label": "👥 Friends", "className": "pill" },
       { "id": "stats", "label": "🏆 Stats", "className": "pill" },
+      { "id": "voices", "label": "🔊 Voices", "className": "pill" },
       { "id": "debug", "label": "⚙️ Debug", "className": "pill" },
       { "id": "close", "label": "Close", "className": "pill quiet" }
     ]
@@ -116,5 +117,42 @@
       { "id": "newPark", "label": "New Park", "className": "danger" },
       { "id": "back", "label": "← Back", "className": "pill quiet" }
     ]
+  },
+  "voicesMenu": {
+    "title": "voices: {status}",
+    "status": {
+      "off": "off",
+      "basic": "basic voices",
+      "hd": "hd voices",
+      "loading": "downloading hd voices… {percent}%",
+      "starting": "getting voices ready…",
+      "none": "no voices on this device"
+    },
+    "pill": {
+      "onIcon": "🔊",
+      "offIcon": "🔇",
+      "off": "off",
+      "basic": "basic",
+      "hd": "hd",
+      "loading": "hd {percent}%",
+      "starting": "…",
+      "none": "none"
+    },
+    "items": [
+      { "id": "off", "label": "🔇 off" },
+      { "id": "basic", "label": "🔊 basic voices" },
+      { "id": "hd", "label": "✨ hd voices · ~190 MB, one-time" },
+      { "id": "volume", "label": "volume {volume}%" },
+      { "id": "back", "label": "back" }
+    ],
+    "notices": {
+      "unlock": "voices on.",
+      "muted": "voices off. press m to turn them back on.",
+      "unmuted": "voices on.",
+      "hdReady": "hd voices ready.",
+      "hdUnsupported": "hd voices need a faster device. using basic voices.",
+      "hdFailed": "hd voices didn't load. using basic voices for now.",
+      "basicUnsupported": "no voices on this device, sorry."
+    }
   }
 }

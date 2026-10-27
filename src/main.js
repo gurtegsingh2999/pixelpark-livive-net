@@ -40,7 +40,12 @@ import miniGamesData from '../data/minigames.json' with { type: 'json' };
 import { rollReward, applyReward } from './rewards.js';
 import { awardNpcGame } from './npc/game-rewards.js';
 import { autoEquipOwner } from './npc/loadout.js';
-import { assignVoice, voiceUsage, VOICE_POOL } from './tts/voices.js';
+import { assignVoice, voiceUsage, resolveVoice, resolveVoices, VOICE_POOL } from './tts/voices.js';
+import { createVoiceController } from './tts/controller.js';
+import { loadSettings, saveSettings } from './tts/settings.js';
+import { describePill, voicesMenu } from './tts/select.js';
+import { createWebSpeechEngine } from './tts/engines/webspeech.js';
+import { createKokoroEngine, createAudioOutput } from './tts/engines/kokoro.js';
 
 const MAX_NPCS = engineConfig.crowd.maxNpcs;
 const DEFAULT_CROWD = engineConfig.crowd.defaultCount;
@@ -63,6 +68,10 @@ let entered = false;
 let lastFrameAt = 0;
 let npcWatchPrompt = null;
 let delegated = { host: false, runtime: false, bubbles: false };
+let voices = null;
+let voicesBeatOpen = false;
+
+const VOICES_COPY = dialogueData.voicesMenu;
 
 function makeId(prefix) {
   const value = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2, 10);
@@ -110,6 +119,8 @@ function onFriendshipChanged(npcId, isFriend) {
 }
 
 function onDialogueEnded() {
+  voicesBeatOpen = false;
+  voices?.cancel();
   game?.select(null);
   game?.resumeFromDialogue();
   behaviorRuntime?.setDialogue(false);
@@ -283,7 +294,9 @@ function showAbandonPrompt(meta, opponent, onConfirm, onCancel) {
       }
     }
   }));
-  dialogue.openCustomBeat(opponent && opponent.name ? opponent : { name: 'Game' }, prompt.text, choices);
+  dialogue.openCustomBeat(opponent && opponent.name ? opponent : { name: 'Game' }, prompt.text, choices, {
+    key: prompt.key ? `${prompt.key}.abandonPrompt` : null
+  });
 }
 
 function handleGameEnd(payload) {
@@ -316,7 +329,10 @@ function handleGameEnd(payload) {
     }
   }));
 
-  dialogue.openCustomBeat(opponent, text, choices);
+  // The "Rewards:" line stays on screen; cleanForSpeech drops it from speech.
+  dialogue.openCustomBeat(opponent, text, choices, {
+    key: beat?.key && beat?.outcome ? `${beat.key}.${beat.outcome}` : null
+  });
   panels?.updateDebugUI?.();
 }
 
@@ -405,11 +421,88 @@ function openPlayerMenu() {
         else showToast('No companions following you right now.');
       } else if (item.id === 'friends') panels?.toggleFriendsPanel();
       else if (item.id === 'stats') panels?.toggleStatsPanel();
+      else if (item.id === 'voices') openVoicesMenu({ fromMenu: true });
       else if (item.id === 'debug') openDebugMenu();
     }
   }));
 
   dialogue.openCustomBeat(player, dialogueData.playerMenu.title, choices);
+}
+
+/** Resolved voice for a neighbour: roster order decides pitch/rate variants of shared voices. */
+function voiceFor(character) {
+  return resolveVoices(game?.npcs || []).get(character?.id) || resolveVoice(character);
+}
+
+function distanceFromPlayer(actor) {
+  const player = game?.player;
+  if (!player || !actor) return null;
+  return Math.hypot((actor.x ?? 0) - (player.x ?? 0), (actor.y ?? 0) - (player.y ?? 0));
+}
+
+function ensureVoices() {
+  if (voices) return voices;
+  const output = createAudioOutput();
+  voices = createVoiceController({
+    engines: {
+      webspeech: createWebSpeechEngine(),
+      kokoro: createKokoroEngine({ output })
+    },
+    player: output,
+    settings: loadSettings(),
+    save: saveSettings,
+    voiceFor,
+    resolveActor: resolveCharacter,
+    distanceTiles: distanceFromPlayer,
+    notices: VOICES_COPY.notices,
+    onNotice: text => showToast(text),
+    onChange: renderVoices
+  });
+  return voices;
+}
+
+/** Topbar pill, plus the open voices beat's title (download progress). */
+function renderVoices(state = voices?.state()) {
+  if (!state) return;
+  const pill = describePill(state, VOICES_COPY);
+  const button = $('voices-toggle');
+  if (button) {
+    button.querySelector('.icon').textContent = pill.icon;
+    button.querySelector('.label').textContent = pill.label;
+    button.title = `voices: ${pill.title} (m to mute)`;
+    button.setAttribute('aria-label', `voices: ${pill.title}`);
+    button.setAttribute('aria-pressed', String(state.mode !== 'off'));
+    button.classList.toggle('loading', pill.loading);
+  }
+  if (voicesBeatOpen && dialogue?.isOpen()) dialogue.setText(voicesMenu(state, VOICES_COPY).text);
+}
+
+function openVoicesMenu({ fromMenu = false, focusIndex = 0 } = {}) {
+  const controller = ensureVoices();
+  const menu = voicesMenu(controller.state(), VOICES_COPY);
+  const choices = menu.items.map((item, index) => ({
+    label: item.label,
+    className: item.className,
+    onClick: () => {
+      if (item.id === 'back') {
+        if (fromMenu) openPlayerMenu();
+        else dialogue.close();
+        return;
+      }
+      // Runs inside the click, so Safari lets speech and audio start.
+      if (item.id === 'volume') controller.cycleVolume();
+      else controller.setMode(item.id);
+      openVoicesMenu({ fromMenu, focusIndex: index });
+    }
+  }));
+  dialogue.openCustomBeat(game?.player || { name: 'Park' }, menu.text, choices, { key: 'voicesMenu' });
+  // Keep focus on the choice just picked (setBeat focuses the first one).
+  window.requestAnimationFrame(() => dialogue.choices?.children?.[focusIndex]?.focus({ preventScroll: true }));
+}
+
+function toggleVoicesMute() {
+  const state = ensureVoices().toggleMute();
+  showToast(state.mode === 'off' ? VOICES_COPY.notices.muted : VOICES_COPY.notices.unmuted);
 }
 
 function openDebugMenu() {
@@ -558,7 +651,8 @@ function ensureBehaviorRuntime() {
     host,
     onToast: showToast,
     notifyGames: false,
-    onGameStart: (detail, session) => promptNpcGameWatch(detail, session)
+    onGameStart: (detail, session) => promptNpcGameWatch(detail, session),
+    onSay: detail => voices?.speakSay(detail)
   });
 
   game.setBehaviorRuntime?.(behaviorRuntime);
@@ -788,6 +882,10 @@ function ensureGame() {
   if (!game) {
     dialogue = new DialogueManager({
       onDialogueEnd: onDialogueEnded,
+      onBeat: (npc, text, key) => {
+        voicesBeatOpen = key === 'voicesMenu';
+        voices?.speakBeat(npc, text, key);
+      },
       onFriendshipChange: onFriendshipChanged,
       onPlayGame,
       getGame: () => game
@@ -1446,6 +1544,22 @@ function bindEvents() {
     openWizard({ fresh: true });
   });
 
+  $('voices-toggle')?.addEventListener('click', () => {
+    if (dialogue?.isOpen()) dialogue.close();
+    else openVoicesMenu();
+  });
+
+  // Safari starts speech and Web Audio only from a gesture. After a reload with
+  // voices on, the first click or key press unlocks them silently.
+  const unlockVoices = () => {
+    if (!voices || voices.isUnlocked() || voices.unlock('')) {
+      window.removeEventListener('pointerdown', unlockVoices, true);
+      window.removeEventListener('keydown', unlockVoices, true);
+    }
+  };
+  window.addEventListener('pointerdown', unlockVoices, true);
+  window.addEventListener('keydown', unlockVoices, true);
+
   $('npc-shuffle').addEventListener('click', rerollCardCharacter);
   $('npc-remove').addEventListener('click', removeCardCharacter);
 
@@ -1504,6 +1618,14 @@ function bindEvents() {
   bindTouchButton('touch-esc', 'Escape');
 
   window.addEventListener('keydown', event => {
+    const typing = event.target instanceof HTMLElement
+      && event.target.closest('input, textarea, select, [contenteditable="true"]');
+    if (event.key.toLowerCase() === 'm' && !typing && !event.repeat
+      && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      toggleVoicesMute();
+      return;
+    }
+
     if (dialogue?.isOpen()) {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -1523,7 +1645,9 @@ function bindEvents() {
 
   window.addEventListener('pagehide', saveNow);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') saveNow();
+    if (document.visibilityState !== 'hidden') return;
+    voices?.cancel();
+    saveNow();
   });
 
   window.setInterval(saveNow, 8000);
@@ -1579,6 +1703,8 @@ function boot() {
   });
 
   bindEvents();
+  ensureVoices().start();
+  renderVoices();
 
   const saved = loadSave();
   if (saved) {
@@ -1609,6 +1735,7 @@ window.playPark = {
   get miniGameHost() { return host; },
   get hostState() { return host?.getState?.() || null; },
   get bubbles() { return bubbles; },
+  get voices() { return voices; },
   get behaviorRuntime() { return behaviorRuntime; },
   get npcGameAdapter() { return npcGameAdapter; },
   get fetchGame() { return host?.activeGameId === 'fetch' ? host.session?.game?.legacy || null : null; },

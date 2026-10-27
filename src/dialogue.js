@@ -37,9 +37,15 @@ export function resolveGameChoices(options = {}, friendSpec = {}) {
 }
 
 export class DialogueManager {
-  constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame, getGame } = {}) {
+  /**
+   * @param {object} [options]
+   * @param {(npc:object, text:string, key:string|null) => void} [options.onBeat] called after
+   *   every beat is shown; `key` names the dialogue (data/dialogues.json) or is null for menus
+   */
+  constructor({ containerId = 'dialogue', onDialogueEnd, onFriendshipChange, onPlayGame, getGame, onBeat } = {}) {
     this.dialogueNpc = null;
     this.onDialogueEnd = onDialogueEnd;
+    this.onBeat = onBeat;
     this.onFriendshipChange = onFriendshipChange;
     this.onPlayGame = onPlayGame;
     this.getGame = getGame;
@@ -53,7 +59,7 @@ export class DialogueManager {
     return this.container && !this.container.hidden;
   }
 
-  setBeat(text, choices) {
+  setBeat(text, choices, { key = null } = {}) {
     if (!this.text || !this.choices) return;
     this.text.textContent = text;
     this.choices.replaceChildren();
@@ -69,6 +75,7 @@ export class DialogueManager {
 
     this.bindArrowNavigation();
     window.requestAnimationFrame(() => this.choices.querySelector('button')?.focus({ preventScroll: true }));
+    this.onBeat?.(this.dialogueNpc, text, key);
   }
 
   setText(text) {
@@ -126,7 +133,7 @@ export class DialogueManager {
         ...c,
         onClick: () => this.close()
       }));
-      this.setBeat(info.text, choices);
+      this.setBeat(info.text, choices, { key: 'companion' });
       return;
     }
 
@@ -152,7 +159,7 @@ export class DialogueManager {
         onClick: () => this.close()
       });
 
-      this.setBeat(interpolate(friendSpec.text, { name: npc.name }), choices);
+      this.setBeat(interpolate(friendSpec.text, { name: npc.name }), choices, { key: 'friend' });
       return;
     }
 
@@ -162,16 +169,16 @@ export class DialogueManager {
       className: c.className,
       onClick: c.action === 'accept' ? () => this.acceptFriendship() : () => this.declineFriendship()
     }));
-    this.setBeat(interpolate(strangerSpec.text, { name: npc.name }), choices);
+    this.setBeat(interpolate(strangerSpec.text, { name: npc.name }), choices, { key: 'stranger' });
   }
 
-  openCustomBeat(npc, text, choices) {
+  openCustomBeat(npc, text, choices, { key = null } = {}) {
     if (!npc || !this.container) return;
     this.dialogueNpc = npc;
     document.body.classList.add('dialogue-open');
     this.container.hidden = false;
     this.name.textContent = npc.name;
-    this.setBeat(text, choices);
+    this.setBeat(text, choices, { key });
     this.updatePosition();
   }
 
@@ -257,7 +264,7 @@ export class DialogueManager {
       ...c,
       onClick: () => this.close()
     }));
-    this.setBeat(interpolate(spec.text, { name: npc.name }), choices);
+    this.setBeat(interpolate(spec.text, { name: npc.name }), choices, { key: 'accepted' });
   }
 
   declineFriendship() {
@@ -267,7 +274,7 @@ export class DialogueManager {
       ...c,
       onClick: () => this.close()
     }));
-    this.setBeat(spec.text, choices);
+    this.setBeat(spec.text, choices, { key: 'declined' });
   }
 
   close() {

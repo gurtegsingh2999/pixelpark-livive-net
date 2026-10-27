@@ -24,7 +24,8 @@ npm run vendor      # rebuild vendor/dicebear-voxel.js from vendor-src/dicebear.
 npm run render:pets # re-render data/cubeworld_pets.json from assets/cubeworld-src
 npm run vendor:tts  # rebuild vendor/kokoro.js, vendor/espeak-ng/, vendor/ort/ from node_modules
 npm run tts:model   # fetch pinned Kokoro files into git-ignored assets/tts/kokoro/
-                    # (TTS_SETS="core spike" also fetches the q8 and fp16 test models)
+                    # (default set "core": the game's fp16 model, ~178 MB; TTS_SETS="core wasm spike"
+                    # also fetches the q8f16 and q8 files the spike/ test page uses)
 ```
 
 `npm install` is only needed for `npm run vendor`, `npm run vendor:tts`, or when changing
@@ -40,6 +41,7 @@ dev tooling. Do not commit `node_modules/` or `assets/tts/kokoro/`.
 | `data/dialogues.json` | Dialogue templates, prompts with `{name}` interpolation, and menu schemas |
 | `data/entities.json` | NPC names, player names, and vibes/flavour text |
 | `data/cubeworld_pets.json` | Pre-rendered offline sprite sheets for Cube World animal pets and creatures |
+| `data/voices.json` | Voice pool, spoken dialogue keys, text cleanup, voice settings defaults, Web Speech hints |
 | `src/main.js` | App state, dialogue triggers, save loop, and event wiring |
 | `src/game.js` | Movement physics, tile collision, camera, character registry, wander AI |
 | `src/renderer.js` | Canvas WorldRenderer, viewport math, layer sorting, and minimap |
@@ -59,6 +61,11 @@ dev tooling. Do not commit `node_modules/` or `assets/tts/kokoro/`.
 | `src/games/checkers.js` | In-world 8×8 Checkers/Draughts board on map tiles with turn-taking |
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
+| `src/tts/voices.js`, `text.js`, `speaker.js` | Pure: voice assignment, speech text cleanup, speech queue and cancel rules |
+| `src/tts/settings.js`, `select.js` | Pure: `playpark.settings.v1` (voices off/basic/hd, volume), engine choice, pill and menu text |
+| `src/tts/controller.js` | Settings + engines + speaker glue (injected deps; who may speak, deferred engine swap) |
+| `src/tts/engines/webspeech.js` | "basic" voices: on-device `speechSynthesis` voices only, mapped from the pool |
+| `src/tts/engines/kokoro.js` | "hd" voices: worker proxy (fp16 on WebGPU with shader-f16 only) and Web Audio output |
 | `src/tts/kokoro.worker.js` | Kokoro TTS module worker: loads the bundle and model from this site only (fetch guard), picks WebGPU or WASM |
 | `vendor-src/kokoro.js` | Source entry for `vendor/kokoro.js`; wraps kokoro-js so voices load from this site |
 | `vendor/kokoro.js` | Generated bundle (kokoro-js, Transformers.js, ONNX Runtime Web); do not hand-edit |
@@ -154,6 +161,7 @@ build steps unless the project actually needs them.
 - Character avatars: [DiceBear](https://www.dicebear.com/) (Voxel Art & companion avatar styles, CC0 1.0).
 - 3D Cube World pets & creatures: [Quaternius](https://quaternius.com/) (CC0 / Public Domain), rasterized offline via `scripts/render_cubeworld_pets.py`. See `README.md` for details.
 - Park nature scenery: [Kitbitz](https://kitbitz.art/) Nature Kit (CC0 1.0 Universal).
-- Voices (test only): Kokoro-82M model and kokoro-js (Apache-2.0), Transformers.js (Apache-2.0),
+- hd voices: Kokoro-82M model and kokoro-js (Apache-2.0), Transformers.js (Apache-2.0),
   ONNX Runtime Web (MIT, `vendor/ort/LICENSE`), eSpeak NG phonemizer (GPL-3.0-or-later,
-  `vendor/espeak-ng/`). The final phonemizer license path is decided after the Wave 0 go/no-go.
+  `vendor/espeak-ng/`). The phonemizer is served to hd players as its own file, next to its
+  `COPYING` and `SOURCE.md`; keep it separate from MIT code and keep both notices with it.

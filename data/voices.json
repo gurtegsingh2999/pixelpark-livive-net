@@ -55,7 +55,7 @@
       "stranger", "friend", "accepted", "declined",
       "ttt.*", "checkers.*", "chess.*", "fetch.*"
     ],
-    "skip": ["playerMenu", "debugMenu", "companion", "social.npcGamePrompt"],
+    "skip": ["playerMenu", "debugMenu", "voicesMenu", "companion", "social.npcGamePrompt"],
     "bubbles": {
       "enabled": false,
       "keys": ["social.*"],
@@ -65,5 +65,25 @@
       "volume": 0.6,
       "skipVisualOnly": true
     }
+  },
+  "settings": {
+    "key": "playpark.settings.v1",
+    "defaults": { "voices": "off", "volume": 0.8, "bubbles": false, "lastOn": "basic" },
+    "volumeSteps": [0.25, 0.5, 0.8, 1]
+  },
+  "webspeech": {
+    "loadTimeoutMs": 1500,
+    "endTimeoutMs": 4000,
+    "msPerChar": 110,
+    "genderHints": {
+      "female": ["samantha", "victoria", "karen", "moira", "tessa", "fiona", "serena", "kate", "susan",
+        "allison", "ava", "zoe", "nicky", "joelle", "zira", "hazel", "catherine", "libby", "sonia", "aria",
+        "jenny", "michelle", "martha", "flo", "shelley", "sandy", "grandma", "female", "woman"],
+      "male": ["daniel", "alex", "fred", "tom", "aaron", "arthur", "oliver", "gordon", "lee", "rishi",
+        "evan", "nathan", "david", "mark", "george", "ryan", "guy", "ralph", "eddy", "reed", "rocko",
+        "grandpa", "james", "male", "man"]
+    },
+    "exclude": ["albert", "bad news", "bahh", "bells", "boing", "bubbles", "cellos", "good news", "jester",
+      "organ", "superstar", "trinoids", "whisper", "wobble", "zarvox"]
   }
 }
