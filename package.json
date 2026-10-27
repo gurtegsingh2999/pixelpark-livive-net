@@ -6,14 +6,18 @@
   "type": "module",
   "scripts": {
     "vendor": "esbuild vendor-src/dicebear.js --bundle --format=esm --outfile=vendor/dicebear-voxel.js --minify --log-level=warning",
+    "vendor:tts": "node scripts/build_tts_vendor.mjs",
     "serve": "python3 -m http.server 4173",
     "start": "python3 -m http.server 4173",
     "render:pets": "python3 scripts/render_cubeworld_pets.py",
-    "test": "node --test"
+    "test": "node --test",
+    "tts:model": "sh scripts/fetch_tts_model.sh"
   },
   "devDependencies": {
     "@dicebear/core": "^10.7.0",
     "@dicebear/styles": "^10.6.0",
-    "esbuild": "^0.28.2"
+    "coi-serviceworker": "0.1.7",
+    "esbuild": "^0.28.2",
+    "kokoro-js": "1.2.1"
   }
 }

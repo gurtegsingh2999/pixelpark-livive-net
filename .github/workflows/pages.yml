@@ -1,0 +1,61 @@
+# Staging deploy for this fork: https://gurtegsingh2999.github.io/pixelpark-livive-net/
+# Builds an allowlisted copy of the site, adds the pinned Kokoro files from
+# scripts/kokoro.lock (sha256-checked, cached between runs), and deploys it.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # core = q8f16 model, tokenizer, pool voices. spike = q8 + fp16 for the Wave 0 test page.
+  TTS_SETS: core spike
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore Kokoro files
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: assets/tts/kokoro
+          key: kokoro-${{ hashFiles('scripts/kokoro.lock') }}-${{ env.TTS_SETS }}
+
+      - name: Fetch and verify Kokoro files
+        # Re-hashes every file, cache hit or not; any mismatch fails the build.
+        run: sh scripts/fetch_tts_model.sh
+
+      - name: Assemble site (allowlist)
+        run: |
+          mkdir _site
+          cp -R index.html LICENSE css src data assets vendor _site/
+          if [ -d spike ]; then cp -R spike _site/; fi
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

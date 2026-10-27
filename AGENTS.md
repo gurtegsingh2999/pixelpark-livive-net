@@ -11,7 +11,7 @@ dialogue, friendships, and autosave.
 
 The repository root is the deployable site. There is no bundler or framework in the app:
 `index.html`, `css/app.css`, and native ES modules in `src/`. DiceBear is pre-bundled into
-`vendor/dicebear-voxel.js` so the app makes no runtime network requests.
+`vendor/dicebear-voxel.js` so the app makes no requests to third-party hosts.
 
 ## Commands
 
@@ -22,10 +22,13 @@ npm start           # static server at http://localhost:4173
 npm test            # node:test suites in test/
 npm run vendor      # rebuild vendor/dicebear-voxel.js from vendor-src/dicebear.js
 npm run render:pets # re-render data/cubeworld_pets.json from assets/cubeworld-src
+npm run vendor:tts  # rebuild vendor/kokoro.js, vendor/espeak-ng/, vendor/ort/ from node_modules
+npm run tts:model   # fetch pinned Kokoro files into git-ignored assets/tts/kokoro/
+                    # (TTS_SETS="core spike" also fetches the q8 and fp16 test models)
 ```
 
-`npm install` is only needed for `npm run vendor` or when changing dev tooling. Do not
-commit `node_modules/`.
+`npm install` is only needed for `npm run vendor`, `npm run vendor:tts`, or when changing
+dev tooling. Do not commit `node_modules/` or `assets/tts/kokoro/`.
 
 ## Architecture
 
@@ -56,6 +59,16 @@ commit `node_modules/`.
 | `src/games/checkers.js` | In-world 8×8 Checkers/Draughts board on map tiles with turn-taking |
 | `vendor-src/dicebear.js` | Source entry used to build the committed vendor bundle |
 | `vendor/dicebear-voxel.js` | Generated bundle; do not hand-edit |
+| `src/tts/kokoro.worker.js` | Kokoro TTS module worker: loads the bundle and model from this site only (fetch guard), picks WebGPU or WASM |
+| `vendor-src/kokoro.js` | Source entry for `vendor/kokoro.js`; wraps kokoro-js so voices load from this site |
+| `vendor/kokoro.js` | Generated bundle (kokoro-js, Transformers.js, ONNX Runtime Web); do not hand-edit |
+| `vendor/espeak-ng/` | Phonemizer (eSpeak NG, GPL-3.0) kept as its own file, with `COPYING` and `SOURCE.md` |
+| `vendor/ort/` | ONNX Runtime Web wasm runtime (MIT) |
+| `scripts/kokoro.lock` | Pinned Kokoro files (sha256, size, set, path) |
+| `scripts/fetch_tts_model.sh` | Fetches and verifies `scripts/kokoro.lock` into `assets/tts/kokoro/`; `--check` only verifies |
+| `scripts/build_tts_vendor.mjs` | `npm run vendor:tts` build script |
+| `spike/tts/` | Wave 0 Kokoro timing page (manual, throwaway; removed after go/no-go) |
+| `.github/workflows/pages.yml` | Staging deploy: allowlisted site plus the pinned Kokoro files |
 | `scripts/render_cubeworld_pets.py` | Standalone 3D software rasterizer generating `data/cubeworld_pets.json` |
 | `test/` | `node:test` suites for pure logic |
 
@@ -65,8 +78,12 @@ extractable.
 
 ## Core invariants
 
-- **No runtime API calls.** Do not switch avatar generation to `api.dicebear.com`. The
-  app must work offline. Add new styles by extending the vendored bundle.
+- **No requests to third-party hosts at runtime.** Do not switch avatar generation to
+  `api.dicebear.com`; add new styles by extending the vendored bundle. The app must work
+  offline. The Kokoro model is a same-origin asset: the Pages workflow fetches it at build
+  time (`npm run tts:model` does the same locally), and the game loads it only when voices
+  are turned on. Build every asset URL relative to the file using it (`import.meta.url` or
+  the document), never `/assets/...`; staging lives under a subpath.
 - **Characters are recipes, not images.** Persist `{ seed, look }`; render the SVG locally.
   Do not store uploaded avatars in saves.
 - **Tile collision is strict.** A character occupies its current tile and reserves its
@@ -121,9 +138,15 @@ extractable.
 
 ## Deployment
 
-GitHub Pages serves the repository root. `CNAME` maps it to `pp.livive.net`. Pushing to
-`main` is the deployment step; do not add a build pipeline unless the project actually
-needs one.
+This repository is a fork of `jpeckenpaugh/pp-livive-net`. `pp.livive.net` is served by
+upstream's own legacy Pages build. `CNAME` is kept for upstream; this fork ignores it.
+
+This fork deploys with `.github/workflows/pages.yml` (GitHub Actions) to
+https://gurtegsingh2999.github.io/pixelpark-livive-net/. That is a subpath, so pushing to
+`main` is a staging deploy. The workflow publishes an allowlist (`index.html`, `LICENSE`,
+`css/`, `src/`, `data/`, `assets/`, `vendor/`, `spike/`) and adds the Kokoro files from
+`scripts/kokoro.lock`, checking every sha256 and failing on a mismatch. Do not add other
+build steps unless the project actually needs them.
 
 ## Licenses & Attributions
 
@@ -131,3 +154,6 @@ needs one.
 - Character avatars: [DiceBear](https://www.dicebear.com/) (Voxel Art & companion avatar styles, CC0 1.0).
 - 3D Cube World pets & creatures: [Quaternius](https://quaternius.com/) (CC0 / Public Domain), rasterized offline via `scripts/render_cubeworld_pets.py`. See `README.md` for details.
 - Park nature scenery: [Kitbitz](https://kitbitz.art/) Nature Kit (CC0 1.0 Universal).
+- Voices (test only): Kokoro-82M model and kokoro-js (Apache-2.0), Transformers.js (Apache-2.0),
+  ONNX Runtime Web (MIT, `vendor/ort/LICENSE`), eSpeak NG phonemizer (GPL-3.0-or-later,
+  `vendor/espeak-ng/`). The final phonemizer license path is decided after the Wave 0 go/no-go.

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>kokoro voice test</title>
+  <script>
+    // ?coi=1 registers the COOP/COEP service worker (scope: spike/tts/) so WASM
+    // can use threads. Without it, any earlier registration is removed.
+    window.coi = {
+      shouldRegister: () => new URLSearchParams(location.search).get('coi') === '1',
+      shouldDeregister: () => new URLSearchParams(location.search).get('coi') !== '1',
+      coepCredentialless: () => false
+    };
+  </script>
+  <script src="coi-serviceworker.js"></script>
+  <style>
+    :root {
+      --bg: #0b110d; --panel: #16221a; --raised: #1a281d; --line: rgba(163, 210, 139, 0.18);
+      --text: #eef4ea; --muted: #a4b4a2; --accent: #b6e37c; --ink: #101a0f; --danger: #e79a9a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 1100px; margin: 0 auto; display: grid; gap: 14px; }
+    h1 { font-size: 20px; margin: 0; }
+    h2 { font-size: 15px; margin: 0 0 8px; color: var(--accent); }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    label { color: var(--muted); }
+    select, input, textarea, button { font: inherit; color: var(--text); background: var(--raised);
+      border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+    textarea { width: 100%; min-height: 54px; }
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); color: var(--ink); border-color: transparent; font-weight: 600; }
+    button:disabled { opacity: 0.45; cursor: default; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; }
+    .scroll { overflow-x: auto; }
+    .pass { color: var(--accent); font-weight: 600; }
+    .fail { color: var(--danger); font-weight: 600; }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-all; }
+    progress { width: 100%; }
+    #status { min-height: 1.4em; }
+  </style>
+</head>
+<body>
+<main>
+  <header class="row" style="justify-content: space-between">
+    <h1>kokoro voice test <span class="muted">(wave 0, throwaway)</span></h1>
+    <span id="status" class="muted" role="status" aria-live="polite"></span>
+  </header>
+
+  <section aria-labelledby="setup-h">
+    <h2 id="setup-h">setup</h2>
+    <div class="row">
+      <label for="device">device</label>
+      <select id="device">
+        <option value="auto">auto (webgpu if present)</option>
+        <option value="webgpu">webgpu</option>
+        <option value="wasm">wasm</option>
+      </select>
+      <label for="model">model</label>
+      <select id="model">
+        <option value="auto">auto (fp16 on webgpu, q8f16 on wasm)</option>
+        <option value="q8f16">q8f16 (86 MB)</option>
+        <option value="q8">q8 (92 MB)</option>
+        <option value="fp16">fp16 (163 MB)</option>
+      </select>
+      <label><input type="checkbox" id="coi"> threads (coi)</label>
+      <button id="apply" type="button">apply (reloads)</button>
+    </div>
+    <div class="row" style="margin-top: 10px">
+      <button id="load" type="button" class="primary">load model</button>
+      <button id="bench" type="button" disabled>run benchmark</button>
+      <button id="clear" type="button">clear model cache</button>
+      <button id="copy" type="button" disabled>copy results json</button>
+    </div>
+    <p class="muted" style="margin: 8px 0 0">targets: first audio for a 10–15 word line in ≤ 1.5 s on webgpu, ≤ 4 s on wasm.
+      "first audio" = from sending the line to the worker until its audio is ready to play.
+      for a true cold load: clear model cache, then reload.</p>
+  </section>
+
+  <section aria-labelledby="env-h">
+    <h2 id="env-h">device</h2>
+    <div class="scroll"><table><tbody id="env"></tbody></table></div>
+  </section>
+
+  <section aria-labelledby="load-h">
+    <h2 id="load-h">load</h2>
+    <progress id="progress" max="1" value="0"></progress>
+    <div id="progress-text" class="muted mono"></div>
+    <div class="scroll"><table><tbody id="load-info"></tbody></table></div>
+  </section>
+
+  <section aria-labelledby="bench-h">
+    <h2 id="bench-h">benchmark</h2>
+    <div id="summary" class="muted">load the model, then run the benchmark.</div>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>voice</th><th>line</th><th>words</th><th>voice ms</th><th>gen ms</th>
+        <th>first audio ms</th><th>audio s</th><th>rtf</th><th>target</th><th></th></tr></thead>
+      <tbody id="results"></tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="try-h">
+    <h2 id="try-h">try a line / listen to voices</h2>
+    <textarea id="text" aria-label="line to speak">hi, i'm thistle! want to play a round of tic-tac-toe by the pond?</textarea>
+    <div class="row" style="margin-top: 8px">
+      <label for="voice">voice</label>
+      <select id="voice"></select>
+      <label for="speed">speed</label>
+      <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width: 5em">
+      <button id="speak" type="button" disabled>speak</button>
+      <button id="gallery" type="button" disabled>play every pool voice</button>
+      <button id="stop" type="button">stop</button>
+    </div>
+    <div class="scroll"><table><tbody id="tries"></tbody></table></div>
+  </section>
+
+  <section aria-labelledby="req-h">
+    <h2 id="req-h">requests made by the worker</h2>
+    <div id="requests" class="muted">none yet.</div>
+  </section>
+</main>
+<script type="module" src="spike.js"></script>
+</body>
+</html>
