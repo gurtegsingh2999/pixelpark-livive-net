@@ -258,10 +258,10 @@ export class WorldRenderer {
         for (const zone of game.miniGameHost.getHiddenZones() || []) {
           if (!zone) continue;
           hiddenZones.push({
-            minX: zone.x - 1,
-            maxX: zone.x + zone.width,
-            minY: zone.y - 1,
-            maxY: zone.y + zone.height
+            minX: zone.x - 2,
+            maxX: zone.x + zone.width + 1,
+            minY: zone.y - 2,
+            maxY: zone.y + zone.height + 1
           });
         }
       } else {

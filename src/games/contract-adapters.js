@@ -21,7 +21,7 @@ import { TicTacToeMiniGame } from './tic-tac-toe.js';
 import { CheckersMiniGame } from './checkers.js';
 import { ChessMiniGame } from './chess.js';
 import { FetchMiniGame } from './fetch.js';
-import { findOpenTile, findPath } from '../world.js';
+import { findPath } from '../world.js';
 import miniGamesData from '../../data/minigames.json' with { type: 'json' };
 
 const DEFAULT_META = miniGamesData.miniGames || {};
@@ -110,48 +110,67 @@ class LegacyBoardAdapter extends MiniGameBase {
     // no placement was supplied and the legacy class searches around the player.
     this.placement = { originX: board.originX, originY: board.originY };
 
-    // Legacy board games always walk game.player to the left sideline. For an
-    // NPC-vs-NPC session the first seat is not the human, so undo that walk and
-    // stage the seat instead.
+    // Legacy board games always walk game.player to the left sideline. In an
+    // NPC-vs-NPC session the human must stay exactly where they are; stage both
+    // NPC seats on free margin tiles instead.
     const playerSeat = seatCharacter(seats[0]);
     if (playerSeat && playerSeat !== this.game.player) {
-      const human = this.game.player;
-      if (human) {
-        human.path = [];
-        human.moving = false;
-        const occupied = new Set();
-        for (const actor of [...(this.game.npcs || []), ...(this.game.companions || [])]) {
-          if (actor && actor !== human) occupied.add(`${actor.x},${actor.y}`);
-        }
-        const parking = findOpenTile(
-          this.game.terrain,
-          { x: board.originX - 2, y: board.originY + 1 },
-          occupied,
-          1
-        );
-        if (parking) {
-          human.x = parking.x;
-          human.y = parking.y;
-        }
+      // Cancel the legacy auto-walk without moving the human.
+      if (this.game.player) {
+        this.game.player.path = [];
+        this.game.player.moving = false;
       }
-      const target = {
-        x: board.playerSidelineX ?? (board.originX - 1),
-        y: board.playerSidelineY ?? (board.originY + 1)
+      const boardWidth = this.meta.board?.width ?? this.legacy.boardSize ?? 3;
+      const boardHeight = this.meta.board?.height ?? this.legacy.boardSize ?? 3;
+      const occupied = new Set();
+      for (const actor of [
+        this.game.player,
+        ...(this.game.npcs || []),
+        ...(this.game.companions || [])
+      ]) {
+        if (actor) occupied.add(`${actor.x},${actor.y}`);
+      }
+
+      const chooseMargin = (side, preferredY) => {
+        const x = side === 'left' ? board.originX - 1 : board.originX + boardWidth;
+        const offsets = [0, 1, -1, 2, -2, 3, -3, 4, -4];
+        for (const offset of offsets) {
+          const y = preferredY + offset;
+          if (y < 0 || y > 63) continue;
+          if (occupied.has(`${x},${y}`)) continue;
+          return { x, y };
+        }
+        return { x, y: preferredY };
       };
-      playerSeat.inMiniGame = true;
-      playerSeat.miniGameTarget = { x: target.x, y: target.y };
-      const path = findPath(
-        this.game.terrain,
-        { x: playerSeat.x, y: playerSeat.y },
-        target
-      );
-      if (path.length) playerSeat.path = path;
-      else {
-        playerSeat.x = target.x;
-        playerSeat.y = target.y;
-        playerSeat.path = [];
-      }
-      playerSeat.direction = 1;
+
+      const targets = [
+        chooseMargin('left', board.originY + 1),
+        chooseMargin('right', board.originY + 1)
+      ];
+      board.npcSeatTargets = targets;
+
+      const seatsToStage = [
+        playerSeat,
+        seatCharacter(seats[1]) || board.opponent || null
+      ];
+      seatsToStage.forEach((character, index) => {
+        if (!character || !targets[index]) return;
+        const target = targets[index];
+        character.inMiniGame = true;
+        character.miniGameTarget = { x: target.x, y: target.y };
+        const path = findPath(
+          this.game.terrain,
+          { x: character.x, y: character.y },
+          target
+        );
+        if (path.length) character.path = path;
+        else {
+          character.x = target.x;
+          character.y = target.y;
+          character.path = [];
+        }
+        character.direction = index === 0 ? 1 : 3;
+      });
     }
 
     this.phase = PHASES.PLAYING;

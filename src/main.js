@@ -58,6 +58,7 @@ let friends = new Set();
 let toastTimer = 0;
 let entered = false;
 let lastFrameAt = 0;
+let npcWatchPrompt = null;
 let delegated = { host: false, runtime: false, bubbles: false };
 
 function makeId(prefix) {
@@ -130,6 +131,7 @@ function tableGamesFor(opponent) {
 
 function openDialogue(npc) {
   if (!npc) return;
+  dismissNpcWatchPrompt();
   panels?.closeAllPanels();
   game.select(npc.id);
   behaviorRuntime?.setDialogue(true);
@@ -358,6 +360,7 @@ function makeNpc() {
 }
 
 function openWizard({ fresh = false } = {}) {
+  dismissNpcWatchPrompt();
   if (fresh || !draft) {
     draft = makeDraft();
     ensureGame();
@@ -460,7 +463,16 @@ function hostHooks() {
     onGameEnd: handleGameEnd,
     recordGameResult,
     rollReward: (currentGame, rewardKey, outcome) => rollReward(currentGame || game, rewardKey, outcome),
-    applyReward: (currentGame, reward) => applyReward(currentGame || game, reward),
+    applyReward: (currentGame, reward) => {
+      const notices = applyReward(currentGame || game, reward);
+      // A reward can add an active companion. The behavior runtime snapshots
+      // its actor list, so rebuild it immediately or the new buddy has no
+      // follow behavior until the page is reloaded.
+      syncBehaviorWorld({ reset: true });
+      panels?.updateDebugUI?.();
+      saveNow();
+      return notices;
+    },
     dialogues: dialogueData,
     onEvent: event => {
       if (event?.type === 'open') refreshMiniGameFlags();
@@ -540,7 +552,8 @@ function ensureBehaviorRuntime() {
   bridgeBehaviorEvents(behaviorRuntime, bubbles, {
     host,
     onToast: showToast,
-    notifyGames: false
+    notifyGames: false,
+    onGameStart: (detail, session) => promptNpcGameWatch(detail, session)
   });
 
   game.setBehaviorRuntime?.(behaviorRuntime);
@@ -1034,6 +1047,127 @@ function triggerNpcGame() {
   refreshMiniGameFlags();
   panels?.updateDebugUI?.();
   showToast(`${pair[0].name} and ${pair[1].name} started Tic-Tac-Toe.`);
+  promptNpcGameWatch({
+    actorId: pair[0].id,
+    partnerId: pair[1].id,
+    game: 'tic-tac-toe'
+  }, host?.session || null);
+}
+
+function dismissNpcWatchPrompt() {
+  if (!npcWatchPrompt) return;
+  if (npcWatchPrompt.timer) clearInterval(npcWatchPrompt.timer);
+  npcWatchPrompt = null;
+}
+
+function isNpcOnlySession(session) {
+  if (!session || !Array.isArray(session.seats) || !session.seats.length) return false;
+  return session.seats.every(seat => seat?.character && seat.character !== game?.player);
+}
+
+function walkPlayerToSpectate(session) {
+  const player = game?.player;
+  if (!player || !game?.terrain || !session) return;
+  const board = session.game?.legacy?.activeBoard || null;
+  const metaBoard = session.meta?.board || {};
+  const originX = session.placement?.originX ?? board?.originX;
+  const originY = session.placement?.originY ?? board?.originY;
+  if (!Number.isFinite(originX) || !Number.isFinite(originY)) return;
+  const height = metaBoard.height || 3;
+  const width = metaBoard.width || 3;
+  const occupied = new Set();
+  for (const actor of [...(game.npcs || []), ...(game.companions || [])]) {
+    if (actor) occupied.add(`${actor.x},${actor.y}`);
+  }
+  for (let y = originY; y < originY + height; y++) {
+    for (let x = originX; x < originX + width; x++) {
+      occupied.add(`${x},${y}`);
+    }
+  }
+  const candidate = { x: originX - 1, y: originY + height + 1 };
+  const spot = findOpenTile(game.terrain, candidate, occupied, 1);
+  if (!spot) return;
+  const path = findPath(game.terrain, { x: player.x, y: player.y }, spot);
+  if (path.length) {
+    player.path = path;
+    game.destination = { x: spot.x, y: spot.y, until: game.time + 6 };
+  } else {
+    showToast('Could not find a clear spot to watch from.');
+  }
+}
+
+function promptNpcGameWatch(detail = {}, session = null) {
+  if (!detail || detail.ok === false) return;
+  const activeSession = session || host?.session || null;
+  if (!isNpcOnlySession(activeSession)) return;
+  if (dialogue?.isOpen() || npcWatchPrompt) return;
+
+  panels?.closeMenu?.();
+  const actor = resolveCharacter(detail.actorId) || activeSession.seats[0]?.character || null;
+  const partner = resolveCharacter(detail.partnerId) || activeSession.seats[1]?.character || null;
+  const gameId = detail.game || activeSession.meta?.id || 'tic-tac-toe';
+  const gameName = host?.getMeta?.(gameId)?.title
+    || miniGamesData.miniGames?.[gameId]?.title
+    || 'a mini-game';
+  const social = dialogueData.social || {};
+  const template = social.npcGamePrompt
+    || '{a} and {b} are about to play a game of {game}. Want to watch?';
+  const baseText = template
+    .replaceAll('{a}', actor?.name || 'A neighbour')
+    .replaceAll('{b}', partner?.name || 'another neighbour')
+    .replaceAll('{game}', gameName);
+
+  const prompt = { token: {}, timer: null };
+  npcWatchPrompt = prompt;
+  let remaining = 5;
+  const textFor = seconds => `${baseText} (${seconds})`;
+
+  const dismiss = () => {
+    if (npcWatchPrompt?.token !== prompt.token) return false;
+    dismissNpcWatchPrompt();
+    return true;
+  };
+
+  const choices = [
+    {
+      label: social.npcGameWatch || 'Watch',
+      className: 'primary',
+      onClick: () => {
+        if (!dismiss()) return;
+        dialogue.close();
+        walkPlayerToSpectate(activeSession);
+      }
+    },
+    {
+      label: social.npcGameDecline || 'Maybe later',
+      className: 'pill quiet',
+      onClick: () => {
+        if (!dismiss()) return;
+        dialogue.close();
+      }
+    }
+  ];
+
+  dialogue.openCustomBeat(
+    game?.player || { name: 'Park' },
+    textFor(remaining),
+    choices
+  );
+
+  prompt.timer = setInterval(() => {
+    if (npcWatchPrompt?.token !== prompt.token) return;
+    if (!dialogue?.isOpen()) {
+      dismissNpcWatchPrompt();
+      return;
+    }
+    remaining -= 1;
+    if (remaining <= 0) {
+      dismissNpcWatchPrompt();
+      dialogue.close();
+      return;
+    }
+    dialogue.setText?.(textFor(remaining));
+  }, 1000);
 }
 
 function addNeighbour() {
@@ -1196,6 +1330,7 @@ function boot() {
     getBehaviorSummary: () => behaviorRuntime?.snapshot?.() || null,
     onGrantEffects: grantAllEffects,
     onTriggerNpcGame: triggerNpcGame,
+    onRosterChanged: () => syncBehaviorWorld({ reset: true }),
     onToast: showToast,
     onSave: saveNow,
     onSelect: character => panels?.showCard(character),

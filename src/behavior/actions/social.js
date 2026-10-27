@@ -103,6 +103,8 @@ function stageNpcSeat(character, target, terrain) {
 
 function tttSideline(board, seatIndex) {
   if (!board) return null;
+  const staged = Array.isArray(board.npcSeatTargets) ? board.npcSeatTargets[seatIndex] : null;
+  if (staged) return { x: staged.x, y: staged.y };
   if (seatIndex === 0) {
     return { x: board.originX - 1, y: board.originY + 1 };
   }
@@ -754,6 +756,8 @@ export function bridgeBehaviorEvents(runtime, bubbles, {
   host = null,
   onToast = null,
   notifyGames = true,
+  onGameStart = null,
+  onGameEnd = null,
   emoteFor = null
 } = {}) {
   let lastGame = null;
@@ -795,6 +799,9 @@ export function bridgeBehaviorEvents(runtime, bubbles, {
 
     if (type === 'game.start') {
       if (detail.game) lastGame = detail.game;
+      if (detail.ok !== false && typeof onGameStart === 'function') {
+        onGameStart(detail, host?.session || null);
+      }
       if (!notifyGames || typeof onToast !== 'function') return null;
       const label = gameLabel(host, detail.game || lastGame);
       onToast(detail.ok === false ? `${label} unavailable` : `${label} started`);
@@ -803,6 +810,9 @@ export function bridgeBehaviorEvents(runtime, bubbles, {
 
     if (type === 'game.end' || type === 'game.timeout') {
       if (detail.game) lastGame = detail.game;
+      if (typeof onGameEnd === 'function') {
+        onGameEnd(detail, host?.session || null);
+      }
       if (!notifyGames || typeof onToast !== 'function') return null;
       const label = gameLabel(host, detail.game || lastGame);
       if (type === 'game.timeout') {

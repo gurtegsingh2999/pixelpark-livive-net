@@ -93,7 +93,10 @@
     "greet": "hi there!",
     "chat": "nice day in the park.",
     "invite": "want to play a game?",
-    "friend": "we should play again soon!"
+    "friend": "we should play again soon!",
+    "npcGamePrompt": "{a} and {b} are about to play a game of {game}. Want to watch?",
+    "npcGameWatch": "Watch",
+    "npcGameDecline": "Maybe later"
   },
   "playerMenu": {
     "title": "What would you like to do?",

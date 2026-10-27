@@ -71,6 +71,10 @@ export class DialogueManager {
     window.requestAnimationFrame(() => this.choices.querySelector('button')?.focus({ preventScroll: true }));
   }
 
+  setText(text) {
+    if (this.text) this.text.textContent = text;
+  }
+
   bindArrowNavigation() {
     if (this._hasKeyNav) return;
     this._hasKeyNav = true;

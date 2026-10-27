@@ -318,3 +318,13 @@ test('host binds game.getCompanionsFor and does not mark companions for boardles
   assert.deepEqual(host.getParticipantCompanions(), []);
   host.close({ reason: 'test' });
 });
+
+test('hidden zones include the full board footprint for scenery culling', () => {
+  const { host, player, npc } = setup();
+  host.start('tic-tac-toe', { player, opponent: npc, placement: { originX: 10, originY: 10 }, terrain });
+
+  const zones = host.getHiddenZones();
+  assert.ok(zones.some(zone => (
+    zone.x === 10 && zone.y === 10 && zone.width === 3 && zone.height === 3
+  )), 'board footprint should be hidden from scenery');
+});

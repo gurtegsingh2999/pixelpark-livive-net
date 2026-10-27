@@ -67,6 +67,7 @@ export class PanelsUI {
     getBehaviorSummary,
     onGrantEffects,
     onTriggerNpcGame,
+    onRosterChanged,
     onToast
   }) {
     this.getGame = getGame;
@@ -94,6 +95,7 @@ export class PanelsUI {
     this.getBehaviorSummary = getBehaviorSummary;
     this.onGrantEffects = onGrantEffects;
     this.onTriggerNpcGame = onTriggerNpcGame;
+    this.onRosterChanged = onRosterChanged;
     this.onToast = onToast;
     this.cardCharacter = null;
     this.activeTab = null;
@@ -660,6 +662,7 @@ export class PanelsUI {
           if (!game.player.stabledCompanions) game.player.stabledCompanions = [];
           game.player.stabledCompanions.push({ ...companion, buddyId: 'player' });
           this.renderCompanion();
+          this.onRosterChanged?.();
           this.onSave?.();
         } else {
           this.showCard(companion);
@@ -712,6 +715,7 @@ export class PanelsUI {
           if (Array.isArray(stabled.equipped)) activated.equipped = stabled.equipped;
           game.companions.push(activated);
           this.renderCompanion();
+          this.onRosterChanged?.();
           this.onSave?.();
         });
 

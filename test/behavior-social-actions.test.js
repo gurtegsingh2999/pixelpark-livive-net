@@ -345,10 +345,14 @@ test('bridgeBehaviorEvents turns say/emote into bubbles and games into toasts', 
   const { host } = createFakeHost();
   const bubbles = new SpeechBubbles();
   const toasts = [];
+  const starts = [];
+  const ends = [];
   const runtime = { onEvent: null };
   const bridge = bridgeBehaviorEvents(runtime, bubbles, {
     host,
-    onToast: message => toasts.push(message)
+    onToast: message => toasts.push(message),
+    onGameStart: detail => starts.push(detail.game),
+    onGameEnd: detail => ends.push(detail.game)
   });
 
   runtime.onEvent({ type: 'say', detail: { actorId: 'npc-a', text: 'hi!', key: 'greet' } });
@@ -370,6 +374,8 @@ test('bridgeBehaviorEvents turns say/emote into bubbles and games into toasts', 
     'Tic-Tac-Toe finished · draw',
     'Tic-Tac-Toe timed out'
   ]);
+  assert.deepEqual(starts, ['tic-tac-toe']);
+  assert.deepEqual(ends, ['tic-tac-toe', 'tic-tac-toe']);
 
   bridge.detach();
   assert.equal(runtime.onEvent, null, 'restores the previous handler');

@@ -409,10 +409,20 @@ export class MiniGameHost {
   getHiddenZones() {
     const session = this.session;
     if (!session) return [];
-    const zones = [
+    const zones = [];
+    const footprint = this._footprint();
+    if (footprint) {
+      zones.push({
+        x: footprint.x,
+        y: footprint.y,
+        width: footprint.width,
+        height: footprint.height
+      });
+    }
+    zones.push(
       ...(session.game.getHiddenZones?.() || []),
       ...(session.meta?.board?.hiddenZones || [])
-    ];
+    );
     const seen = new Set();
     return zones.filter(zone => {
       const key = `${zone.x},${zone.y},${zone.width},${zone.height}`;

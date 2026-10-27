@@ -335,12 +335,13 @@ test('host runs an adapted board game and settles exactly once through its hooks
   assert.equal(host.isOpen(), false);
 });
 
-test('NPC-mode board adapters park the human and stage seat 0 on the player sideline', () => {
+test('NPC-mode board adapters leave the human in place and stage both seats on free margins', () => {
   const info = makeWorld();
   const partner = { id: 'npc-2', name: 'Moss', x: 26, y: 20, direction: 0, moving: false, path: [] };
   info.world.npcs.push(partner);
   const adapter = createTicTacToeAdapter({ meta: metas['tic-tac-toe'], game: info.world });
   const placement = { originX: 10, originY: 10 };
+  const humanStart = { x: info.player.x, y: info.player.y };
 
   const opened = adapter.open({
     seats: [{ character: info.npc }, { character: partner }],
@@ -352,14 +353,14 @@ test('NPC-mode board adapters park the human and stage seat 0 on the player side
   const board = adapter.legacy.activeBoard;
   assert.equal(info.npc.inMiniGame, true);
   assert.deepEqual(info.npc.miniGameTarget, { x: board.originX - 1, y: board.originY + 1 });
-  assert.ok(info.npc.path.length > 0, 'seat 0 should walk to the player sideline');
+  assert.ok(info.npc.path.length > 0, 'seat 0 should walk to the left margin');
+  assert.deepEqual(board.npcSeatTargets[0], { x: board.originX - 1, y: board.originY + 1 });
+  assert.deepEqual(board.npcSeatTargets[1], { x: board.originX + 3, y: board.originY + 1 });
 
-  // The human is not left on the seat-0 tile.
-  assert.notDeepEqual(
-    { x: info.player.x, y: info.player.y },
-    { x: board.originX - 1, y: board.originY + 1 }
-  );
+  // The human is not moved and the legacy auto-walk is cancelled.
+  assert.deepEqual({ x: info.player.x, y: info.player.y }, humanStart);
   assert.equal(info.player.path.length, 0);
+  assert.equal(info.player.moving, false);
 
   // Seats are exempt from board blocking; bystanders are not.
   assert.equal(adapter.blocksStep(info.npc, board.originX, board.originY), false);

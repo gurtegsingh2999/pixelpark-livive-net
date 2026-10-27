@@ -450,6 +450,9 @@ runtime = choose > arbitrate > run state > advance/complete/interrupt
 - Fetch treated its companion as a parked board participant; fetch froze — boardless activities no longer claim companions.
 - NPC Tic-Tac-Toe did not stage seat 0, placed the board around the human, and the human blocked the seat — NPC placement/staging and seat blocking fixed; NPC TTT driver added.
 - Debug NPC games picked far-apart neighbours; now picks the closest pair.
+- Reward companions had no behavior entry until reload — rewards and companion bench/activate now resync the behavior world.
+- Scenery on mini-game boards stayed visible — host hidden zones now include the full board footprint with a 2-tile visual margin.
+- NPC mini-games yanked the player next to the board — the human stays put and gets a 5-second "want to watch?" prompt; Watch walks them over instead of teleporting.
 
 **Known gaps / follow-ups**
 
