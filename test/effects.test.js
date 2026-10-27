@@ -120,11 +120,11 @@ test('effects data defines slots, composition, motions, and all ten effects', ()
 
 test('headline effect values match the approved design', () => {
   assert.equal(getEffect('big-o').visual.scale, 1.5);
-  assert.equal(getEffect('chamo').visual.alpha, 0.1);
+  assert.equal(getEffect('chamo').visual.alpha, 0.4);
   assert.equal(getEffect('tricorder').motion, 'teleport');
   assert.equal(getEffect('buddy-cape').target, 'party');
   assert.equal(getEffect('lucky-clover').stats.coinBonus, 1);
-  assert.equal(getEffect('bouncy-boots').stats.stepDurationScale, 0.75);
+  assert.equal(getEffect('bouncy-boots').stats.stepDurationScale, 0.6);
 });
 
 test('charm capacity holds two effects and swaps the oldest on overflow', () => {
@@ -194,7 +194,7 @@ test('composition multiplies scale/alpha and adds offsets/rotation', () => {
   assert.equal(fx.offsetX, 1);
   assert.equal(fx.offsetY, -7);
   assert.equal(fx.rotate, 2);
-  assert.equal(fx.stats.stepDurationScale, 0.75);
+  assert.equal(fx.stats.stepDurationScale, 0.6);
   assert.equal(fx.stats.coinBonus, 0);
   assert.ok(fx.aura.some(aura => aura.key === 'halo.glow'));
   assert.ok(fx.vfx.includes('big-o.pop'));
@@ -213,9 +213,9 @@ test('composition multiplies scale/alpha and adds offsets/rotation', () => {
   const chamoCharacter = makeCharacter(['chamo-clip']);
   equipAll(chamoCharacter);
   const faded = resolveFx(chamoCharacter);
-  assert.equal(faded.alpha, 0.1);
-  assert.equal(composeRenderTransform({ alpha: 0.5 }, faded).alpha, 0.05);
-  assert.deepEqual(faded.outline, { color: '#d9fbe5', width: 1, alpha: 0.35 });
+  assert.equal(faded.alpha, 0.4);
+  assert.equal(composeRenderTransform({ alpha: 0.5 }, faded).alpha, 0.2);
+  assert.deepEqual(faded.outline, { color: '#d9fbe5', width: 1.5, alpha: 0.5 });
 });
 
 test('stacking effects add their stats', () => {
@@ -333,5 +333,5 @@ test('equip works from item or effect ids without a catalog entry', () => {
   const byEffect = equip(character, 'chamo');
   assert.equal(byEffect.ok, true);
   assert.equal(byEffect.effectId, 'chamo');
-  assert.equal(resolveFx(character).alpha, 0.1);
+  assert.equal(resolveFx(character).alpha, 0.4);
 });

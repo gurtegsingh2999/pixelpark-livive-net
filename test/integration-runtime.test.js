@@ -221,37 +221,69 @@ test('Bouncy Boots shortens the step duration through the effect stat', () => {
   equip(game.player, 'bouncy-boots', 'feet', 'bouncy-boots');
 
   assert.equal(game.tryStep(game.player, 0, 1, PLAYER_STEP), true);
-  assert.ok(Math.abs(game.player.duration - PLAYER_STEP * 0.75) < 1e-9);
+  assert.ok(Math.abs(game.player.duration - PLAYER_STEP * 0.6) < 1e-9);
 });
 
-test('teleport motion is cosmetic and still respects water, occupancy, and boards', () => {
+test('teleport jumps up to 3 tiles and passes through water, characters, and boards', () => {
   const waterGame = makeGame();
   waterGame.terrain[10][11] = 'water';
   equip(waterGame.player, 'teleport-tricorder', 'hand', 'tricorder');
-  assert.equal(waterGame.tryStep(waterGame.player, 1, 0, PLAYER_STEP), false);
-  assert.equal(waterGame.player.moving, false);
+  assert.equal(waterGame.tryStep(waterGame.player, 1, 0, PLAYER_STEP), true);
+  assert.equal(waterGame.player.toX, 13);
+  assert.equal(waterGame.player.toY, 10);
 
   const occupancyGame = makeGame();
   occupancyGame.npcs = [
     occupancyGame.makeCharacter({ id: 'npc-blocker', name: 'Pip', x: 11, y: 10 })
   ];
   equip(occupancyGame.player, 'teleport-tricorder', 'hand', 'tricorder');
-  assert.equal(occupancyGame.tryStep(occupancyGame.player, 1, 0, PLAYER_STEP), false);
-  assert.equal(occupancyGame.player.moving, false);
+  assert.equal(occupancyGame.tryStep(occupancyGame.player, 1, 0, PLAYER_STEP), true);
+  assert.equal(occupancyGame.player.toX, 13);
 
   const boardGame = makeGame();
   boardGame.setMiniGameHost({ blocksStep: () => true, update: () => {} });
   equip(boardGame.player, 'teleport-tricorder', 'hand', 'tricorder');
-  assert.equal(boardGame.tryStep(boardGame.player, 1, 0, PLAYER_STEP), false);
-  assert.equal(boardGame.player.moving, false);
+  assert.equal(boardGame.tryStep(boardGame.player, 1, 0, PLAYER_STEP), true);
+  assert.equal(boardGame.player.toX, 13);
 
   const bumpGame = makeGame();
   const bumpNpc = bumpGame.makeCharacter({ id: 'npc-bump', name: 'Bop', x: 11, y: 10 });
   bumpGame.npcs = [bumpNpc];
   equip(bumpGame.player, 'teleport-tricorder', 'hand', 'tricorder');
-  assert.equal(bumpGame.tryPlayerStep(1, 0), false);
-  assert.equal(bumpGame.dialogueNpc, bumpNpc);
-  assert.equal(bumpGame.player.moving, false);
+  assert.equal(bumpGame.tryPlayerStep(1, 0), true);
+  assert.equal(bumpGame.dialogueNpc, null);
+  assert.equal(bumpGame.player.toX, 13);
+
+  // A fully occupied landing line still refuses to overlap another character.
+  const blockedGame = makeGame();
+  blockedGame.npcs = [11, 12, 13].map(x => blockedGame.makeCharacter({
+    id: `npc-${x}`,
+    name: `N${x}`,
+    x,
+    y: 10
+  }));
+  equip(blockedGame.player, 'teleport-tricorder', 'hand', 'tricorder');
+  assert.equal(blockedGame.tryStep(blockedGame.player, 1, 0, PLAYER_STEP), false);
+  assert.equal(blockedGame.player.moving, false);
+});
+
+test('Echo Bell records a short trail of previous tiles', () => {
+  const game = makeGame();
+  equip(game.player, 'echo-bell', 'charm', 'echo-bell');
+
+  assert.equal(game.tryStep(game.player, 1, 0, PLAYER_STEP), true);
+  game.player.x = game.player.toX;
+  game.player.y = game.player.toY;
+  game.player.moving = false;
+  game.time += 0.2;
+  assert.equal(game.tryStep(game.player, 1, 0, PLAYER_STEP), true);
+
+  assert.ok(Array.isArray(game.player.effectTrail));
+  assert.equal(game.player.effectTrail.length, 2);
+  assert.deepEqual(
+    game.player.effectTrail.map(entry => [entry.x, entry.y]),
+    [[10, 10], [11, 10]]
+  );
 });
 
 test('teleport stores motion style and snaps interpolation at its arrive point', () => {
@@ -260,6 +292,7 @@ test('teleport stores motion style and snaps interpolation at its arrive point',
 
   assert.equal(game.tryStep(game.player, 1, 0, PLAYER_STEP), true);
   assert.equal(game.player.motionStyle, 'teleport');
+  assert.equal(game.player.toX, 13);
   assert.ok(game.player.motionArriveAt > 0 && game.player.motionArriveAt < 1);
 
   game.player.elapsed = game.player.duration * game.player.motionArriveAt + 1e-6;

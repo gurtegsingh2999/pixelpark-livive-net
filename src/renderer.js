@@ -448,6 +448,11 @@ export class WorldRenderer {
       const period = Math.max(1, Number(fx.motion.periodMs) || 2200);
       const degrees = Number(fx.motion.rotateDeg) || 0;
       rotate += Math.sin((nowMs / period) * Math.PI * 2) * degrees * DEG_TO_RAD;
+    } else if (fx.motionId === 'bounce' && fx.motion) {
+      const period = Math.max(1, Number(fx.motion.periodMs) || 260);
+      const amplitude = Number(fx.motion.amplitude) || 0;
+      const strength = character.moving ? 1 : 0.28;
+      offsetY -= Math.abs(Math.sin((nowMs / period) * Math.PI * 2)) * amplitude * strength;
     }
 
     // Teleport is cosmetic: the step already passed collision checks in Game.
@@ -462,19 +467,35 @@ export class WorldRenderer {
     const drawX = footX + offsetX;
     const top = footY - height + offsetY;
 
-    // Minimal trail (one fading afterimage at the previous tile) to keep the
-    // per-frame cost bounded. Aura/outline are simple canvas primitives.
-    if (Array.isArray(fx.trail) && fx.trail.length && character.moving) {
-      const trail = fx.trail[0] || {};
-      const fromX = (character.fromX + 0.5) * TILE;
-      const fromY = (character.fromY + 1) * TILE;
-      ctx.save();
-      ctx.globalAlpha = 0.16;
-      ctx.fillStyle = trail.color || '#e5f4a5';
-      ctx.beginPath();
-      ctx.ellipse(fromX, fromY - height * 0.45, width * 0.28, height * 0.38, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+    // Dust trails (Bouncy Boots): short lines of fading puffs behind the step.
+    const trailConfigs = Array.isArray(fx.trail) ? fx.trail : [];
+    const history = Array.isArray(character.effectTrail) ? character.effectTrail : [];
+    const entriesForTrail = (config) => {
+      const life = Math.max(80, Number(config?.lifeMs) || 620);
+      const count = Math.max(1, Number(config?.count) || 4);
+      return history
+        .filter(entry => entry && nowMs - entry.at <= life)
+        .slice(-count);
+    };
+
+    for (const config of trailConfigs) {
+      const style = config?.style || 'echo';
+      if (style !== 'dust') continue;
+      const entries = entriesForTrail(config);
+      const life = Math.max(80, Number(config?.lifeMs) || 620);
+      for (const entry of entries) {
+        const age = clamp((nowMs - entry.at) / life, 0, 1);
+        const puffX = (entry.x + 0.5) * TILE;
+        const puffY = (entry.y + 0.55) * TILE;
+        const radius = TILE * (0.12 + 0.22 * (1 - age));
+        ctx.save();
+        ctx.globalAlpha = clamp((Number(config.alpha) || 0.6) * (1 - age), 0, 1);
+        ctx.fillStyle = config.color || '#f4a261';
+        ctx.beginPath();
+        ctx.ellipse(puffX, puffY, radius, radius * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     if (Array.isArray(fx.aura) && fx.aura.length) {
@@ -482,15 +503,51 @@ export class WorldRenderer {
         if (!aura) continue;
         const radius = Number(aura.radius) || 18;
         const pulseMs = Number(aura.pulseMs);
+        const weight = Number(aura.weight) || 1;
         const pulse = pulseMs > 0
-          ? 0.75 + 0.25 * Math.sin((nowMs / pulseMs) * Math.PI * 2)
+          ? 0.72 + 0.28 * Math.sin((nowMs / pulseMs) * Math.PI * 2)
           : 1;
+        const baseAlpha = clamp((Number(aura.opacity) || 0.2) * weight * pulse, 0, 1);
+        const centerY = footY - height * 0.45;
+
         ctx.save();
-        ctx.globalAlpha = clamp(0.18 * (Number(aura.weight) || 1) * pulse, 0, 1);
-        ctx.fillStyle = aura.color || '#e5f4a5';
-        ctx.beginPath();
-        ctx.ellipse(drawX, footY - height * 0.45, radius, radius * 1.2, 0, 0, Math.PI * 2);
-        ctx.fill();
+        if (aura.rainbow) {
+          const spokes = Math.max(3, Number(aura.spokes) || 6);
+          const spin = (nowMs / Math.max(200, pulseMs || 1800)) * Math.PI * 2;
+          ctx.lineWidth = Math.max(3, radius * 0.12);
+          ctx.lineCap = 'round';
+          for (let i = 0; i < spokes; i++) {
+            const start = spin + (i / spokes) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.strokeStyle = `hsl(${Math.round((i / spokes) * 360)}, 95%, 62%)`;
+            ctx.globalAlpha = clamp(baseAlpha * 0.9, 0, 1);
+            ctx.arc(drawX, centerY, radius * (0.86 + 0.14 * pulse), start, start + 0.42);
+            ctx.stroke();
+          }
+        } else {
+          ctx.globalAlpha = clamp(baseAlpha * 0.75, 0, 1);
+          ctx.fillStyle = aura.color || '#e5f4a5';
+          ctx.beginPath();
+          ctx.ellipse(drawX, centerY, radius, radius * 1.1, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const sparks = Math.max(0, Number(aura.sparks) || 0);
+        if (sparks) {
+          const sparkRadius = Number(aura.sparkRadius) || radius * 0.7;
+          for (let i = 0; i < sparks; i++) {
+            const angle = (nowMs / 900) + (i / sparks) * Math.PI * 2;
+            const sx = drawX + Math.cos(angle) * sparkRadius;
+            const sy = centerY + Math.sin(angle) * sparkRadius * 0.62;
+            ctx.beginPath();
+            ctx.globalAlpha = clamp(baseAlpha, 0, 1);
+            ctx.fillStyle = aura.color || '#b9fbc0';
+            ctx.shadowColor = aura.color || '#b9fbc0';
+            ctx.shadowBlur = 12;
+            ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
         ctx.restore();
       }
     }
@@ -546,6 +603,40 @@ export class WorldRenderer {
       // Trigger lazy load for missing frame and fallback to default frame
       loadAvatarImage(character.recipe, { frame: targetFrame }).catch(() => {});
       image = getAvatarImage(character.recipe, { frame: 'default' });
+    }
+
+    if (image) {
+      const flip = shouldMirror(character.direction);
+      for (const config of trailConfigs) {
+        const style = config?.style || 'echo';
+        if (style !== 'echo') continue;
+        const entries = entriesForTrail(config);
+        const life = Math.max(80, Number(config?.lifeMs) || 620);
+        for (const entry of entries) {
+          const age = clamp((nowMs - entry.at) / life, 0, 1);
+          const ghostAlpha = clamp((Number(config.alpha) || 0.35) * (1 - age), 0, 1);
+          const ghostScale = 0.92 + 0.08 * (1 - age);
+          const ghostX = (entry.x + 0.5) * TILE;
+          const ghostY = (entry.y + 1) * TILE;
+          const ghostWidth = width * ghostScale;
+          const ghostHeight = height * ghostScale;
+          ctx.save();
+          ctx.globalAlpha = 1;
+          ctx.shadowColor = config.color || '#c77dff';
+          ctx.shadowBlur = 10;
+          drawAvatar(
+            ctx,
+            image,
+            ghostX - ghostWidth / 2,
+            ghostY - ghostHeight,
+            ghostWidth,
+            ghostHeight,
+            flip,
+            ghostAlpha
+          );
+          ctx.restore();
+        }
+      }
     }
 
     if (image) {

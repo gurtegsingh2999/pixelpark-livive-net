@@ -240,7 +240,7 @@ test('real catalog effects equip, unequip, compose headline values, and keep mot
 
   const active = resolveFx(character, 5000);
   assert.equal(active.scale, 1.5, 'Big-O should scale by 1.5');
-  assert.equal(active.alpha, 0.1, 'Chamo should fade to 0.1');
+  assert.equal(active.alpha, 0.4, 'Chamo should fade to 60% see-through');
   assert.equal(active.motionId, 'teleport', 'teleport motion outranks float');
   assert.equal(active.motionPriority, 100);
   assert.equal(activeEntries(character, 5000).length, 4);
@@ -255,7 +255,7 @@ test('real catalog effects equip, unequip, compose headline values, and keep mot
 
   const afterBigO = resolveFx(character, 6000 + bigTransition.unequipMs + 1);
   assert.equal(afterBigO.scale, 1);
-  assert.equal(afterBigO.alpha, 0.1);
+  assert.equal(afterBigO.alpha, 0.4);
   assert.equal(character.inventory.length, 4);
 
   const chamo = byId.get('chamo-clip');

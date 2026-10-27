@@ -1426,6 +1426,24 @@ body.dialogue-open .topbar {
   color: var(--accent);
 }
 
+.effect-target-select {
+  margin-top: 5px;
+  max-width: 100%;
+  padding: 3px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(182, 227, 124, 0.28);
+  background: rgba(20, 38, 28, 0.92);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.effect-target-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .effect-list {
   display: flex;
   flex-wrap: wrap;

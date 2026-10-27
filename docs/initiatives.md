@@ -453,7 +453,8 @@ runtime = choose > arbitrate > run state > advance/complete/interrupt
 
 **Known gaps / follow-ups**
 
-- Visual polish for the seven non-headline effects is functional but minimal (aura/trail/tint).
+- Effect visuals are now deliberately strong (60% Chamo, four-echo trail, 3-tile blink, rainbow Prism ring, bounce/dust boots, glow sparks), but still use canvas primitives rather than bespoke art.
+- Effect items can be applied to the player or an active companion from the backpack target picker; stabled companions remain readable/unequippable from the same list.
 - Fetch auto-packs on ball return without a reward settlement.
 - NPC-vs-NPC checkers/chess remain deferred.
 - Behaviors use the existing animation families; style-specific follow cadence is data-tunable but not yet bespoke art.

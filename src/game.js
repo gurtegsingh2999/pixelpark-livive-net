@@ -363,6 +363,13 @@ export class Game {
     const ny = this.player.y + dy;
     this.player.direction = directionForStep(dx, dy);
 
+    // Teleport ignores terrain, bumps, and board blocking; tryStep handles the
+    // 3-tile landing search and the free-landing check.
+    const fx = this.resolveFxFor(this.player);
+    if (fx?.motionId === 'teleport') {
+      return this.tryStep(this.player, dx, dy, PLAYER_STEP);
+    }
+
     // Check collision with NPCs
     const bumpNpc = occupantAtTile(this.npcs, nx, ny);
     if (bumpNpc) {
@@ -471,6 +478,15 @@ export class Game {
 
   tryStep(character, dx, dy, duration) {
     if (!this.terrain) return false;
+    const fx = this.resolveFxFor(character);
+
+    // Teleport is the one movement style allowed to bypass terrain and board
+    // blocking. It still refuses to land on another character, so reservations
+    // and bump-to-talk remain coherent.
+    if (fx?.motionId === 'teleport') {
+      return this.tryTeleportStep(character, dx, dy, duration, fx);
+    }
+
     const nx = character.x + dx;
     const ny = character.y + dy;
     if (!isWalkable(typeAt(this.terrain, nx, ny))) return false;
@@ -500,11 +516,11 @@ export class Game {
 
     // Effect movement is cosmetic: it scales the step clock and records a
     // motion style, but never bypasses the checks above.
-    const fx = this.resolveFxFor(character);
     const durationScale = Number.isFinite(fx?.stats?.stepDurationScale)
       ? fx.stats.stepDurationScale
       : 1;
 
+    this.recordEffectTrail(character, fx);
     character.fromX = character.x;
     character.fromY = character.y;
     character.toX = nx;
@@ -525,6 +541,74 @@ export class Game {
         : 0.6;
     }
     return true;
+  }
+
+  /**
+   * Teleport up to `motion.distance` tiles in a direction. Intermediate tiles
+   * may be water, scenery, or board tiles; only the landing tile must be free
+   * of other characters so reservations never overlap.
+   */
+  tryTeleportStep(character, dx, dy, duration, fx) {
+    const maxDistance = clamp(Number(fx?.motion?.distance) || 3, 1, 3);
+    const collidingObstacles = this.allOtherCharacters(character).filter(other => canCollide(character, other));
+    let landing = null;
+
+    for (let distance = 1; distance <= maxDistance; distance++) {
+      const tx = character.x + dx * distance;
+      const ty = character.y + dy * distance;
+      if (tx < 0 || tx >= WORLD_SIZE || ty < 0 || ty >= WORLD_SIZE) break;
+      if (reservationAtTile(collidingObstacles, tx, ty)) continue;
+      landing = { x: tx, y: ty, distance };
+    }
+    if (!landing) return false;
+
+    // Echo-style effects still show the skipped tiles.
+    for (let step = 0; step < landing.distance; step++) {
+      this.recordEffectTrailPoint(character, {
+        x: character.x + dx * step,
+        y: character.y + dy * step
+      }, fx);
+    }
+
+    const durationScale = Number.isFinite(fx?.stats?.stepDurationScale)
+      ? fx.stats.stepDurationScale
+      : 1;
+
+    character.fromX = character.x;
+    character.fromY = character.y;
+    character.toX = landing.x;
+    character.toY = landing.y;
+    character.moving = true;
+    character.elapsed = 0;
+    character.duration = Math.max(0.01, duration * durationScale);
+    character.direction = directionForStep(dx, dy);
+    character.motionStyle = 'teleport';
+    character.motionArriveAt = 1;
+    const blinkMs = Number(fx?.motion?.blinkMs);
+    const durationMs = character.duration * 1000;
+    character.motionArriveAt = Number.isFinite(blinkMs) && durationMs > 0
+      ? clamp(blinkMs / durationMs, 0.05, 1)
+      : 0.6;
+    return true;
+  }
+
+  recordEffectTrailPoint(character, point, fx) {
+    if (!Array.isArray(fx?.trail) || !fx.trail.length || !point) return;
+    const maxCount = Math.max(
+      1,
+      ...fx.trail.map(trail => Math.max(1, Number(trail.count) || 3))
+    );
+    if (!Array.isArray(character.effectTrail)) character.effectTrail = [];
+    character.effectTrail.push({
+      x: point.x,
+      y: point.y,
+      at: (this.time || 0) * 1000
+    });
+    while (character.effectTrail.length > maxCount) character.effectTrail.shift();
+  }
+
+  recordEffectTrail(character, fx) {
+    this.recordEffectTrailPoint(character, { x: character.x, y: character.y }, fx);
   }
 
   updatePlayer(dt) {
@@ -554,7 +638,12 @@ export class Game {
       const dx = next.x - player.x;
       const dy = next.y - player.y;
       if (Math.abs(dx) + Math.abs(dy) === 1 && this.tryPlayerStep(dx, dy)) {
-        if (!player.path.length) this.destination = null;
+        if (player.motionStyle === 'teleport') {
+          player.path = [];
+          this.destination = null;
+        } else if (!player.path.length) {
+          this.destination = null;
+        }
         return;
       }
       player.path = [];

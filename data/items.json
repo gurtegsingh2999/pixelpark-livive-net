@@ -36,7 +36,7 @@
       "action": "equip",
       "slot": "charm",
       "effect": "big-o",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "💪",
       "description": "Everything about you goes 1.5x bigger.",
       "ui": { "summary": "1.5x bigger everything.", "badge": "1.5x", "slotLabel": "Charm" }
@@ -48,10 +48,10 @@
       "action": "equip",
       "slot": "face",
       "effect": "chamo",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "🫥",
-      "description": "Almost invisible, but your nameplate still shows.",
-      "ui": { "summary": "almost invisible, still yourself.", "badge": "0.1x", "slotLabel": "Face" }
+      "description": "60% see-through, but your nameplate still shows.",
+      "ui": { "summary": "60% see-through, still yourself.", "badge": "60%", "slotLabel": "Face" }
     },
     "teleport-tricorder": {
       "id": "teleport-tricorder",
@@ -60,10 +60,10 @@
       "action": "equip",
       "slot": "hand",
       "effect": "tricorder",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "🛸",
-      "description": "Blink tile to tile. Walls still count.",
-      "ui": { "summary": "blink from tile to tile.", "badge": "blink", "slotLabel": "Hand" }
+      "description": "Blink up to 3 tiles, even through walls and water.",
+      "ui": { "summary": "blink up to 3 tiles through obstacles.", "badge": "3-tile", "slotLabel": "Hand" }
     },
     "hover-halo": {
       "id": "hover-halo",
@@ -72,7 +72,7 @@
       "action": "equip",
       "slot": "head",
       "effect": "hover-halo",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "😇",
       "description": "Hover a little above the grass.",
       "ui": { "summary": "hover a little above the grass.", "badge": "float", "slotLabel": "Head" }
@@ -84,10 +84,10 @@
       "action": "equip",
       "slot": "charm",
       "effect": "prism-pin",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "💎",
-      "description": "A slow rainbow shimmer follows you.",
-      "ui": { "summary": "a slow rainbow shimmer.", "badge": "shimmer", "slotLabel": "Charm" }
+      "description": "A bold rotating rainbow ring follows you.",
+      "ui": { "summary": "a bold rainbow ring.", "badge": "rainbow", "slotLabel": "Charm" }
     },
     "echo-bell": {
       "id": "echo-bell",
@@ -96,10 +96,10 @@
       "action": "equip",
       "slot": "charm",
       "effect": "echo-bell",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "🔔",
-      "description": "Leave a few fading echoes when you walk.",
-      "ui": { "summary": "fading echoes when you move.", "badge": "echo", "slotLabel": "Charm" }
+      "description": "Leave four fading echoes when you walk.",
+      "ui": { "summary": "four fading echoes when you move.", "badge": "echo", "slotLabel": "Charm" }
     },
     "bouncy-boots": {
       "id": "bouncy-boots",
@@ -108,10 +108,10 @@
       "action": "equip",
       "slot": "feet",
       "effect": "bouncy-boots",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "👟",
-      "description": "Bounce along 25% faster with a soft landing.",
-      "ui": { "summary": "walk 25% faster, land bouncy.", "badge": "bouncy", "slotLabel": "Feet" }
+      "description": "Bounce along 40% faster with a big landing.",
+      "ui": { "summary": "walk 40% faster, land bouncy.", "badge": "bouncy", "slotLabel": "Feet" }
     },
     "buddy-cape": {
       "id": "buddy-cape",
@@ -120,10 +120,10 @@
       "action": "equip",
       "slot": "back",
       "effect": "buddy-cape",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "🦸",
-      "description": "Your party pals get a little bigger and bluer.",
-      "ui": { "summary": "share the cape with your party.", "badge": "party", "slotLabel": "Back" }
+      "description": "Choose you or a companion; party pals get bigger and bluer.",
+      "ui": { "summary": "apply to you or a companion; party buff.", "badge": "party", "slotLabel": "Back" }
     },
     "glowworm-jar": {
       "id": "glowworm-jar",
@@ -132,10 +132,10 @@
       "action": "equip",
       "slot": "hand",
       "effect": "glowworm-jar",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "🫙",
-      "description": "A soft pulsing glow keeps you company.",
-      "ui": { "summary": "a soft pulsing glow.", "badge": "glow", "slotLabel": "Hand" }
+      "description": "A big pulsing glow with orbiting fireflies.",
+      "ui": { "summary": "pulsing glow and fireflies.", "badge": "glow", "slotLabel": "Hand" }
     },
     "lucky-clover": {
       "id": "lucky-clover",
@@ -144,7 +144,7 @@
       "action": "equip",
       "slot": "charm",
       "effect": "lucky-clover",
-      "owners": ["player", "npc"],
+      "owners": ["player", "npc", "companion"],
       "icon": "🍀",
       "description": "+1 coin every time you earn a reward.",
       "ui": { "summary": "+1 coin when you earn a reward.", "badge": "+1 coin", "slotLabel": "Charm" }

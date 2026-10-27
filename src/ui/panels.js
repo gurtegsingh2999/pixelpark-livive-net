@@ -99,6 +99,7 @@ export class PanelsUI {
     this.activeTab = null;
     this.lastActiveTab = 'backpack';
     this.focusedIndex = 0;
+    this.effectTargetSelections = new Map();
     this.bindEvents();
     this.bindKeyboardNav();
   }
@@ -108,6 +109,49 @@ export class PanelsUI {
     if (!game) return [];
     const friends = this.getFriends();
     return game.npcs.filter(npc => friends.has(npc.id));
+  }
+
+  effectTargets() {
+    const game = this.getGame();
+    if (!game?.player) return [];
+    const active = typeof game.getCompanionsFor === 'function'
+      ? game.getCompanionsFor('player')
+      : (game.companions || []).filter(comp => comp.buddyId === 'player');
+    return [game.player, ...(active || [])].filter(Boolean);
+  }
+
+  effectItemKey(item) {
+    return item?.uid || item?.id || '';
+  }
+
+  moveItemInstance(from, to, uidOrItem) {
+    if (!from || !to || from === to) return null;
+    const inventory = Array.isArray(from.inventory) ? from.inventory : (from.inventory = []);
+    const uid = typeof uidOrItem === 'string' ? uidOrItem : uidOrItem?.uid;
+    const id = typeof uidOrItem === 'object' ? uidOrItem?.id : null;
+    const index = inventory.findIndex(candidate => (
+      candidate && ((uid && candidate.uid === uid) || (!uid && id && candidate.id === id))
+    ));
+    if (index < 0) return null;
+    const [item] = inventory.splice(index, 1);
+    if (!Array.isArray(to.inventory)) to.inventory = [];
+    to.inventory.push(item);
+    return item;
+  }
+
+  findEquippedOwner(item) {
+    const game = this.getGame();
+    if (!game) return null;
+    const owners = [
+      game.player,
+      ...(game.companions || []),
+      ...(game.player?.stabledCompanions || [])
+    ].filter(Boolean);
+    for (const owner of owners) {
+      const entry = this.equippedEntry(owner, item);
+      if (entry) return { owner, entry };
+    }
+    return null;
   }
 
   isMenuOpen() {
@@ -200,14 +244,18 @@ export class PanelsUI {
 
   equippedEntry(character, item) {
     if (!character) return null;
-    return activeEntries(character, Date.now()).find(entry => (
-      (item.uid && entry.uid === item.uid) || (!item.uid && entry.itemId === item.id) || entry.itemId === item.id
-    )) || null;
+    const now = (this.getGame()?.time || 0) * 1000;
+    return activeEntries(character, now)
+      .filter(entry => entry.phase === 'in')
+      .find(entry => (
+        (item.uid && entry.uid === item.uid) || (!item.uid && entry.itemId === item.id) || entry.itemId === item.id
+      )) || null;
   }
 
   renderWornStrip(character, list) {
     if (!character) return;
-    const worn = activeEntries(character, Date.now());
+    const worn = activeEntries(character, (this.getGame()?.time || 0) * 1000)
+      .filter(entry => entry.phase === 'in');
     if (!worn.length) {
       const note = document.createElement('p');
       note.className = 'panel-note worn-empty';
@@ -257,7 +305,7 @@ export class PanelsUI {
       return;
     }
     if (action.type === 'equip') {
-      this.toggleEffectItem(item);
+      this.toggleEffectItem(item, this.effectTargetSelections.get(this.effectItemKey(item)));
       return;
     }
     if (action.type === 'unfurl') {
@@ -290,18 +338,47 @@ export class PanelsUI {
     else if (gameId === 'chess') this.onUnfurlChess?.(friend);
   }
 
-  toggleEffectItem(item) {
+  toggleEffectItem(item, targetId) {
     const game = this.getGame();
     const player = game?.player;
     if (!player) return;
 
-    const current = this.equippedEntry(player, item);
     const now = (game.time || 0) * 1000;
-    const result = current
-      ? unequip(player, current.uid, now)
-      : equip(player, item, now);
+    const equipped = this.findEquippedOwner(item);
+    if (equipped) {
+      const result = unequip(equipped.owner, equipped.entry.uid, now);
+      if (!result?.ok) {
+        this.notify('That item is not ready to take off.');
+        return;
+      }
+      if (equipped.owner !== player) {
+        this.moveItemInstance(equipped.owner, player, equipped.entry.uid);
+      }
+      this.onSave?.();
+      this.renderInventory();
+      if (this.cardCharacter) this.renderCardEffects(this.cardCharacter);
+      const where = equipped.owner === player ? '' : ` from ${equipped.owner.name || 'buddy'}`;
+      this.notify(`Took off ${item.name}${where}.`);
+      return;
+    }
 
+    const targets = this.effectTargets();
+    const target = targets.find(candidate => (
+      candidate.id === targetId || (candidate.isPlayer && targetId === 'player')
+    )) || player;
+
+    const movingToCompanion = target !== player;
+    if (movingToCompanion) {
+      const moved = this.moveItemInstance(player, target, item);
+      if (!moved) {
+        this.notify('Could not move that item to your buddy.');
+        return;
+      }
+    }
+
+    const result = equip(target, item, now);
     if (!result?.ok) {
+      if (movingToCompanion) this.moveItemInstance(target, player, item.uid || item.id);
       this.notify(result?.reason === 'unknown-item'
         ? 'That item cannot be worn.'
         : 'That item is not ready to wear.');
@@ -310,18 +387,23 @@ export class PanelsUI {
 
     this.onSave?.();
     this.renderInventory();
-    if (this.cardCharacter === player) this.renderCardEffects(player);
-    this.notify(current ? `Took off ${item.name}.` : `Wearing ${item.name}.`);
+    if (this.cardCharacter) this.renderCardEffects(this.cardCharacter);
+    const suffix = target === player ? '' : ` on ${target.name || 'buddy'}`;
+    this.notify(`Wearing ${item.name}${suffix}.`);
   }
 
   unequipEntry(character, uid) {
     const game = this.getGame();
+    const player = game?.player;
     const result = unequip(character, uid, (game?.time || 0) * 1000);
     if (!result?.ok) return;
+    if (player && character !== player) {
+      this.moveItemInstance(character, player, uid);
+    }
     this.onSave?.();
     this.renderInventory();
     if (this.cardCharacter === character) this.renderCardEffects(character);
-    this.notify('Took it off.');
+    this.notify(character === player ? 'Took it off.' : `Took it off ${character.name || 'your buddy'}.`);
   }
 
   renderInventory() {
@@ -330,7 +412,24 @@ export class PanelsUI {
     list.replaceChildren();
 
     const game = this.getGame();
-    const inventory = game?.player?.inventory || [];
+    const player = game?.player;
+    const inventory = [];
+    const seen = new Set();
+    const owners = [
+      player,
+      ...(game?.companions || []),
+      ...(player?.stabledCompanions || [])
+    ].filter(Boolean);
+    for (const owner of owners) {
+      const equippedUids = new Set((owner.equipped || []).map(entry => entry?.uid).filter(Boolean));
+      for (const item of owner.inventory || []) {
+        if (owner !== player && item?.uid && !equippedUids.has(item.uid)) continue;
+        const key = item?.uid || item?.id;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        inventory.push(item);
+      }
+    }
     const coins = game?.player?.coins || 0;
 
     // Coin banner
@@ -358,7 +457,8 @@ export class PanelsUI {
     const fragment = document.createDocumentFragment();
     for (const item of inventory) {
       const effect = getEffectForItem(item);
-      const worn = this.equippedEntry(game?.player, item);
+      const equipped = this.findEquippedOwner(item);
+      const worn = equipped?.entry || null;
       const row = document.createElement('div');
       row.className = 'friend-row';
       row.setAttribute('role', 'listitem');
@@ -391,9 +491,37 @@ export class PanelsUI {
         badge.textContent = effectBadge(effect) || effect.slot;
         const state = document.createElement('span');
         state.className = worn ? 'item-state worn' : 'item-state';
-        state.textContent = worn ? 'worn · tap to take off' : `wear · ${effect.slot}`;
+        if (worn) {
+          const ownerName = equipped.owner === player ? 'you' : (equipped.owner.name || 'buddy');
+          state.textContent = `worn by ${ownerName} · tap to take off`;
+        } else {
+          state.textContent = `wear · ${effect.slot}`;
+        }
         meta.append(badge, state);
         copy.append(meta);
+
+        if (!worn) {
+          const targets = this.effectTargets();
+          if (targets.length > 1) {
+            const chooser = document.createElement('select');
+            chooser.className = 'effect-target-select';
+            chooser.setAttribute('aria-label', `Apply ${item.name} to`);
+            const key = this.effectItemKey(item);
+            for (const target of targets) {
+              const option = document.createElement('option');
+              option.value = target.isPlayer ? 'player' : target.id;
+              option.textContent = target.isPlayer ? 'Wear on you' : `Give to ${target.name || 'buddy'}`;
+              chooser.append(option);
+            }
+            chooser.value = this.effectTargetSelections.get(key) || 'player';
+            chooser.addEventListener('click', event => event.stopPropagation());
+            chooser.addEventListener('change', event => {
+              event.stopPropagation();
+              this.effectTargetSelections.set(key, chooser.value);
+            });
+            copy.append(chooser);
+          }
+        }
       }
 
       row.append(icon, copy);
@@ -411,7 +539,7 @@ export class PanelsUI {
     label.className = 'buddy-slot-label';
     label.textContent = 'buddy slot';
 
-    const buddyEntries = activeEntries(character, Date.now()).filter(entry => entry.slot === 'buddy');
+    const buddyEntries = activeEntries(character, (this.getGame()?.time || 0) * 1000).filter(entry => entry.slot === 'buddy');
     slot.append(label);
     if (!buddyEntries.length) {
       const empty = document.createElement('span');
@@ -449,7 +577,8 @@ export class PanelsUI {
     }
     host.replaceChildren();
 
-    const entries = activeEntries(character, Date.now());
+    const entries = activeEntries(character, (this.getGame()?.time || 0) * 1000)
+      .filter(entry => entry.phase === 'in');
     if (!entries.length) {
       const note = document.createElement('span');
       note.className = 'item-state';

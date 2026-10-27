@@ -65,15 +65,24 @@
       "id": "sway",
       "label": "Sway",
       "priority": 20,
-      "amplitude": 1,
-      "rotateDeg": 2.5,
+      "amplitude": 2,
+      "rotateDeg": 5,
       "periodMs": 2200,
+      "easing": "sine"
+    },
+    "bounce": {
+      "id": "bounce",
+      "label": "Bounce",
+      "priority": 25,
+      "amplitude": 12,
+      "periodMs": 260,
       "easing": "sine"
     },
     "teleport": {
       "id": "teleport",
       "label": "Blink",
       "priority": 100,
+      "distance": 3,
       "blinkMs": 120,
       "gapMs": 80,
       "dust": true
@@ -128,7 +137,7 @@
       "stacking": "unique",
       "visual": {
         "scale": 1,
-        "alpha": 0.1,
+        "alpha": 0.4,
         "offsetX": 0,
         "offsetY": 0,
         "rotate": 0,
@@ -137,8 +146,8 @@
         "trail": [],
         "outline": {
           "color": "#d9fbe5",
-          "width": 1,
-          "alpha": 0.35
+          "width": 1.5,
+          "alpha": 0.5
         }
       },
       "motion": null,
@@ -153,8 +162,8 @@
         "easing": "ease-out"
       },
       "ui": {
-        "summary": "almost invisible, but still yourself.",
-        "badge": "0.1x",
+        "summary": "60% see-through, but still yourself.",
+        "badge": "60%",
         "icon": "🫥"
       }
     },
@@ -190,7 +199,7 @@
         "easing": "linear"
       },
       "ui": {
-        "summary": "blink from tile to tile. collision still applies.",
+        "summary": "blink up to 3 tiles, even through obstacles.",
         "badge": "blink",
         "icon": "🛸"
       }
@@ -256,7 +265,17 @@
         "offsetY": -1,
         "rotate": 2,
         "tint": "#b388ff",
-        "aura": [],
+        "aura": [
+          {
+            "key": "prism.rainbow-ring",
+            "rainbow": true,
+            "radius": 38,
+            "spokes": 6,
+            "opacity": 0.75,
+            "pulseMs": 2600,
+            "blend": "screen"
+          }
+        ],
         "trail": [],
         "outline": null
       },
@@ -272,8 +291,8 @@
         "easing": "ease-out"
       },
       "ui": {
-        "summary": "a slow rainbow shimmer.",
-        "badge": "shimmer",
+        "summary": "a bold rotating rainbow ring and shimmer.",
+        "badge": "rainbow",
         "icon": "💎"
       }
     },
@@ -297,10 +316,11 @@
         "trail": [
           {
             "key": "echo.afterimage",
+            "style": "echo",
             "color": "#c77dff",
-            "count": 3,
-            "spacingMs": 140,
-            "fade": 0.5
+            "count": 4,
+            "lifeMs": 700,
+            "alpha": 0.36
           }
         ],
         "outline": null
@@ -317,7 +337,7 @@
         "easing": "ease-out"
       },
       "ui": {
-        "summary": "leave a few fading echoes when you move.",
+        "summary": "leave four fading echoes when you move.",
         "badge": "echo",
         "icon": "🔔"
       }
@@ -342,16 +362,18 @@
         "trail": [
           {
             "key": "boots.dust",
-            "color": "#e9c46a",
-            "count": 4,
-            "lifeMs": 400
+            "style": "dust",
+            "color": "#f4a261",
+            "count": 6,
+            "lifeMs": 520,
+            "alpha": 0.65
           }
         ],
         "outline": null
       },
-      "motion": null,
+      "motion": "bounce",
       "stats": {
-        "stepDurationScale": 0.75,
+        "stepDurationScale": 0.6,
         "coinBonus": 0
       },
       "vfx": ["boots.squash", "boots.dust"],
@@ -361,7 +383,7 @@
         "easing": "ease-out"
       },
       "ui": {
-        "summary": "walk 25% faster with a bouncy landing.",
+        "summary": "walk 40% faster with a big bouncy landing.",
         "badge": "bouncy",
         "icon": "👟"
       }
@@ -430,8 +452,11 @@
           {
             "key": "glowworm.pulse",
             "color": "#b9fbc0",
-            "radius": 24,
-            "pulseMs": 1500,
+            "radius": 46,
+            "opacity": 0.55,
+            "pulseMs": 1200,
+            "sparks": 7,
+            "sparkRadius": 30,
             "blend": "screen"
           }
         ],
@@ -450,7 +475,7 @@
         "easing": "ease-out"
       },
       "ui": {
-        "summary": "a soft pulsing glow follows you.",
+        "summary": "a big pulsing glow with orbiting fireflies.",
         "badge": "glow",
         "icon": "🫙"
       }
