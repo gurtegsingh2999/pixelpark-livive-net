@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { ACTION_NAMES, actions } from '../src/behavior/actions.js';
 import { SOCIAL_ACTION_NAMES, socialActions } from '../src/behavior/actions/social.js';
 import { SELECTOR_NAMES } from '../src/behavior/selectors.js';
@@ -241,5 +241,53 @@ test('effect motions and every metadata dialogue key resolve in data', () => {
       assert.ok(socialLines[key] || dialogues.dialogues[key],
         `${behaviorId}.${stateId} says unknown dialogue key ${key}`);
     }
+  }
+});
+
+test('voices.json pool, variants, and speak keys resolve', () => {
+  const voices = readJson('voices.json');
+  const ids = voices.pool.map(voice => voice.id);
+  assert.equal(new Set(ids).size, ids.length, 'voice ids are unique');
+  assert.ok(!ids.includes('am_santa'), 'am_santa stays out of the pool');
+  const prefixes = { female: { american: 'af_', british: 'bf_' }, male: { american: 'am_', british: 'bm_' } };
+  for (const voice of voices.pool) {
+    assert.ok(voices.genders.includes(voice.gender), `${voice.id} gender ${voice.gender}`);
+    assert.ok(voices.accents.includes(voice.accent), `${voice.id} accent ${voice.accent}`);
+    assert.ok(voice.engineVoice.startsWith(prefixes[voice.gender][voice.accent]), `${voice.id} label matches its Kokoro prefix`);
+    assert.match(voice.lang, /^en-(US|GB)$/);
+    for (const field of ['pitch', 'rate']) {
+      assert.ok(voice[field] >= voices.limits[`${field}Min`] && voice[field] <= voices.limits[`${field}Max`], `${voice.id} ${field}`);
+    }
+  }
+  for (const gender of voices.genders) {
+    assert.ok(voices.pool.some(voice => voice.gender === gender), `pool has a ${gender} voice`);
+  }
+  assert.deepEqual(voices.variants[0], { pitch: 0, rate: 0 }, 'variant 0 is the plain voice');
+  for (const variant of voices.variants) {
+    assert.ok(Math.abs(variant.pitch) <= 0.25 && Math.abs(variant.rate) <= 0.25, 'variants stay subtle');
+  }
+
+  const resolveKey = key => {
+    if (key.endsWith('.*')) {
+      const head = key.slice(0, -2);
+      return head === 'social' ? dialogues.social : dialogues.dialogues[head];
+    }
+    if (key.startsWith('social.')) return dialogues.social[key.slice('social.'.length)];
+    return dialogues.dialogues[key] || dialogues[key];
+  };
+  const keys = [...voices.speak.dialogue, ...voices.speak.skip, ...(voices.speak.bubbles.keys || [])];
+  for (const key of keys) {
+    assert.ok(resolveKey(key), `voices.json speak key ${key} does not resolve in dialogues.json`);
+  }
+  assert.equal(voices.text.maxChars, 160);
+});
+
+// Stage 1 lands the Kokoro voice files; until then this check is skipped.
+const kokoroVoiceDir = new URL('../assets/tts/kokoro/voices/', import.meta.url);
+test('every pool voice has a Kokoro voice file', {
+  skip: existsSync(kokoroVoiceDir) ? false : 'assets/tts/kokoro/voices/ not present yet'
+}, () => {
+  for (const voice of readJson('voices.json').pool) {
+    assert.ok(existsSync(new URL(`${voice.engineVoice}.bin`, kokoroVoiceDir)), `missing voice file for ${voice.id}`);
   }
 });

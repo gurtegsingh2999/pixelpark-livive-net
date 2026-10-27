@@ -295,6 +295,7 @@ export class Game {
       equipped: Array.isArray(input.equipped) ? input.equipped : [],
       coins: Number.isFinite(input.coins) ? input.coins : 0,
       stabledCompanions: Array.isArray(input.stabledCompanions) ? input.stabledCompanions : [],
+      ...(typeof input.voice === 'string' ? { voice: input.voice } : {}),
       isPlayer,
       x,
       y,

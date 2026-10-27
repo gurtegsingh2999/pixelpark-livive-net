@@ -9,6 +9,7 @@ import {
   STORAGE_KEY,
   SAVE_VERSION
 } from '../src/storage.js';
+import { VOICE_POOL, assignVoice } from '../src/tts/voices.js';
 
 function grassTerrain() {
   return Array.from({ length: 64 }, () => Array.from({ length: 64 }, () => 'grass'));
@@ -438,4 +439,65 @@ test('loadSave migrates a stored v1 save to v2', () => {
     assert.deepEqual(loaded.player.equipped, []);
     assert.ok(loaded.behavior);
   });
+});
+
+test('an old save without voices loads and gets stable voices', () => {
+  const old = {
+    version: SAVE_VERSION,
+    worldSeed: 'w',
+    terrain: encodeTerrain(grassTerrain()),
+    playerName: 'Tester',
+    playerRecipe: { seed: 'p', look: {} },
+    player: { x: 1, y: 1, inventory: [], equipped: [] },
+    npcs: [
+      { id: 'npc-1', name: 'Pip', recipe: { seed: 'fern-1', look: {} } },
+      { id: 'npc-2', name: 'Moss', recipe: { seed: 'moss-2', look: {} } }
+    ],
+    companions: [],
+    friends: []
+  };
+  const first = migrateSave(JSON.parse(JSON.stringify(old)));
+  const second = migrateSave(JSON.parse(JSON.stringify(old)));
+  const voiceIds = new Set(VOICE_POOL.map(voice => voice.id));
+  assert.ok(first.npcs.every(npc => voiceIds.has(npc.voice)));
+  assert.notEqual(first.npcs[0].voice, first.npcs[1].voice);
+  assert.deepEqual(first.npcs.map(npc => npc.voice), second.npcs.map(npc => npc.voice));
+  assert.equal(first.version, SAVE_VERSION, 'no version bump');
+  assert.equal(old.npcs[0].voice, undefined, 'the input save is not mutated');
+});
+
+test('a save with voices round-trips, and stored voices keep priority', () => {
+  const kept = VOICE_POOL[5].id;
+  const game = baseGame({
+    npcs: [
+      { id: 'npc-1', name: 'Pip', recipe: { seed: 'fern-1', look: {} }, voice: kept, x: 3, y: 3, inventory: [], equipped: [] },
+      { id: 'npc-2', name: 'Moss', recipe: { seed: 'moss-2', look: {} }, x: 4, y: 4, inventory: [], equipped: [] }
+    ]
+  });
+  const save = serializeSave(game, {}, new Set());
+  assert.equal(save.npcs[0].voice, kept);
+  assert.ok(!('voice' in save.npcs[1]), 'no voice key is written for a character without one');
+  const loaded = migrateSave(JSON.parse(JSON.stringify(save)));
+  assert.equal(loaded.npcs[0].voice, kept);
+  assert.notEqual(loaded.npcs[1].voice, kept, 'newcomers do not take a stored voice');
+  const again = migrateSave(JSON.parse(JSON.stringify(serializeSave({ ...game, npcs: loaded.npcs }, {}, new Set()))));
+  assert.deepEqual(again.npcs.map(npc => npc.voice), loaded.npcs.map(npc => npc.voice));
+});
+
+test('an unknown stored voice id falls back to a pool voice', () => {
+  const loaded = migrateSave({
+    version: SAVE_VERSION,
+    playerRecipe: { seed: 'p', look: {} },
+    terrain: encodeTerrain(grassTerrain()),
+    npcs: [{ id: 'npc-1', name: 'Pip', recipe: { seed: 'fern-1', look: {} }, voice: 'zz_retired' }]
+  });
+  assert.ok(VOICE_POOL.some(voice => voice.id === loaded.npcs[0].voice));
+  assert.equal(loaded.npcs[0].voice, assignVoice({ recipe: { seed: 'fern-1' } }));
+});
+
+test('game.makeCharacter carries a stored voice through to the live character', async () => {
+  const { Game } = await import('../src/game.js');
+  const game = new Game();
+  assert.equal(game.makeCharacter({ id: 'npc-1', name: 'Pip', voice: 'bm_george' }).voice, 'bm_george');
+  assert.ok(!('voice' in game.makeCharacter({ id: 'npc-2', name: 'Moss' })));
 });

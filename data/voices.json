@@ -1,0 +1,69 @@
+{
+  "notes": "Kokoro English voices. am_santa is left out of the pool. The rest are pending a by-ear review on the stage 1 test page; prune here, and stored voices that leave the pool are reassigned on load.",
+  "engine": {
+    "preferred": "kokoro",
+    "fallback": "webspeech"
+  },
+  "genders": ["female", "male"],
+  "accents": ["american", "british"],
+  "limits": { "pitchMin": 0.5, "pitchMax": 2, "rateMin": 0.5, "rateMax": 2 },
+  "variants": [
+    { "pitch": 0, "rate": 0 },
+    { "pitch": 0.08, "rate": -0.06 },
+    { "pitch": -0.08, "rate": 0.06 },
+    { "pitch": 0.12, "rate": 0.04 },
+    { "pitch": -0.12, "rate": -0.04 }
+  ],
+  "pool": [
+    { "id": "af_heart", "engineVoice": "af_heart", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_alloy", "engineVoice": "af_alloy", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_aoede", "engineVoice": "af_aoede", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_bella", "engineVoice": "af_bella", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_jessica", "engineVoice": "af_jessica", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_kore", "engineVoice": "af_kore", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_nicole", "engineVoice": "af_nicole", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_nova", "engineVoice": "af_nova", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_river", "engineVoice": "af_river", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_sarah", "engineVoice": "af_sarah", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "af_sky", "engineVoice": "af_sky", "gender": "female", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_adam", "engineVoice": "am_adam", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_echo", "engineVoice": "am_echo", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_eric", "engineVoice": "am_eric", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_fenrir", "engineVoice": "am_fenrir", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_liam", "engineVoice": "am_liam", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_michael", "engineVoice": "am_michael", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_onyx", "engineVoice": "am_onyx", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "am_puck", "engineVoice": "am_puck", "gender": "male", "accent": "american", "lang": "en-US", "pitch": 1, "rate": 1 },
+    { "id": "bf_alice", "engineVoice": "bf_alice", "gender": "female", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 },
+    { "id": "bf_emma", "engineVoice": "bf_emma", "gender": "female", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 },
+    { "id": "bf_isabella", "engineVoice": "bf_isabella", "gender": "female", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 },
+    { "id": "bf_lily", "engineVoice": "bf_lily", "gender": "female", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 },
+    { "id": "bm_daniel", "engineVoice": "bm_daniel", "gender": "male", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 },
+    { "id": "bm_fable", "engineVoice": "bm_fable", "gender": "male", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 },
+    { "id": "bm_george", "engineVoice": "bm_george", "gender": "male", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 },
+    { "id": "bm_lewis", "engineVoice": "bm_lewis", "gender": "male", "accent": "british", "lang": "en-GB", "pitch": 1, "rate": 1 }
+  ],
+  "text": {
+    "maxChars": 160,
+    "minSentenceChars": 12,
+    "dropLinePrefixes": ["Rewards:"],
+    "replacements": { "TTT": "tic tac toe", "&": "and" }
+  },
+  "cache": { "maxEntries": 40 },
+  "speak": {
+    "dialogue": [
+      "stranger", "friend", "accepted", "declined",
+      "ttt.*", "checkers.*", "chess.*", "fetch.*"
+    ],
+    "skip": ["playerMenu", "debugMenu", "companion", "social.npcGamePrompt"],
+    "bubbles": {
+      "enabled": false,
+      "keys": ["social.*"],
+      "maxDistanceTiles": 8,
+      "maxPerMinute": 6,
+      "dedupeMs": 4000,
+      "volume": 0.6,
+      "skipVisualOnly": true
+    }
+  }
+}

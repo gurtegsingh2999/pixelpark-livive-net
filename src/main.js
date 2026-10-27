@@ -40,6 +40,7 @@ import miniGamesData from '../data/minigames.json' with { type: 'json' };
 import { rollReward, applyReward } from './rewards.js';
 import { awardNpcGame } from './npc/game-rewards.js';
 import { autoEquipOwner } from './npc/loadout.js';
+import { assignVoice, voiceUsage, VOICE_POOL } from './tts/voices.js';
 
 const MAX_NPCS = engineConfig.crowd.maxNpcs;
 const DEFAULT_CROWD = engineConfig.crowd.defaultCount;
@@ -346,10 +347,12 @@ function makeDraft() {
 function makeNpc() {
   const used = new Set(draft.npcs.map(npc => npc.name));
   const npcId = makeId('npc');
+  const recipe = createRecipe();
   return {
     id: npcId,
     name: pickName(used),
-    recipe: createRecipe(),
+    recipe,
+    voice: assignVoice({ id: npcId, recipe }, VOICE_POOL, { usage: voiceUsage(draft.npcs) }),
     vibe: pickVibe(),
     inventory: createStarterInventory(),
     companion: {
@@ -852,10 +855,12 @@ function updateMeta() {
 function makeLiveNpc() {
   const used = new Set(game.npcs.map(npc => npc.name));
   const npcId = makeId('npc');
+  const recipe = createRecipe();
   return {
     id: npcId,
     name: pickName(used),
-    recipe: createRecipe(),
+    recipe,
+    voice: assignVoice({ id: npcId, recipe }, VOICE_POOL, { usage: voiceUsage(game.npcs) }),
     vibe: pickVibe(),
     inventory: createStarterInventory(),
     companion: {
@@ -947,6 +952,7 @@ function buildLiveNpcs() {
       name: npc.name,
       recipe: npc.recipe,
       vibe: npc.vibe,
+      voice: npc.voice,
       inventory: npc.inventory || createStarterInventory(),
       companion: npc.companion,
       x: spot.x,
@@ -1096,7 +1102,8 @@ function applyState(state) {
         y: hasPosition ? Math.round(Number(npc.y)) : -1,
         direction: Number(npc.direction) || 0,
         coins: Number.isFinite(npc.coins) ? npc.coins : 0,
-        stabledCompanions: Array.isArray(npc.stabledCompanions) ? npc.stabledCompanions : []
+        stabledCompanions: Array.isArray(npc.stabledCompanions) ? npc.stabledCompanions : [],
+        voice: npc.voice
       };
       if (!isWalkable(terrain[entry.y]?.[entry.x])) {
         const spot = findOpenTile(terrain, { x: rawPlayer.x, y: rawPlayer.y });

@@ -1,5 +1,6 @@
 import { decodeTerrain, encodeTerrain } from './world.js';
 import { normalizeInventory, createItemInstance } from './inventory.js';
+import { assignVoices } from './tts/voices.js';
 
 export const STORAGE_KEY = 'playpark.save.v1';
 export const STATS_KEY = 'playpark.stats.v1';
@@ -219,7 +220,8 @@ export function serializeSave(game, draft, friends, behaviorState = null) {
       direction: npc.direction,
       ...serializeCharacterGear(npc),
       coins: Number.isFinite(npc.coins) ? npc.coins : 0,
-      stabledCompanions: serializeReserveCompanions(npc.stabledCompanions)
+      stabledCompanions: serializeReserveCompanions(npc.stabledCompanions),
+      ...(typeof npc.voice === 'string' ? { voice: npc.voice } : {})
     })),
     companions: (game.companions || []).map(comp => ({
       id: comp.id,
@@ -292,8 +294,10 @@ export function migrateSave(state) {
     next.player = player;
   }
 
+  // Voices are optional and additive: saves without one (or with a voice that
+  // left the pool) get a seeded pick, counted after the voices already stored.
   next.npcs = Array.isArray(state.npcs)
-    ? state.npcs.filter(isObject).map(migrateNpcRecord)
+    ? assignVoices(state.npcs.filter(isObject).map(migrateNpcRecord))
     : [];
   next.companions = Array.isArray(state.companions)
     ? state.companions.filter(isObject).map(comp => migrateCharacterRecord(stripTransient(comp)))
