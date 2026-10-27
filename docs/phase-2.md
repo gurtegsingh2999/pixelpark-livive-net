@@ -306,20 +306,28 @@ No change to player ownership. The existing “apply to you or companion” pick
 
 ## 9. Open questions for product decisions
 
-1. **Active buddy cap per NPC:** 2 (recommended) or 3?
-2. **Reserve cap per NPC:** 6 (recommended), 8, or unlimited?
-3. **Global active companion cap:** 80 (recommended), 60, or no cap?
-4. **NPC rewards:** separate NPC rates (recommended) or reuse player game specs?
-5. **Companion drop rate:** 80% on win (recommended) or guaranteed until cap?
-6. **Draw/loss rewards:** small coins on draw, nothing on loss (recommended)?
-7. **Auto-equip target order:** self first, then companions (recommended) or companions first for non-party effects?
-8. **Auto-swap:** never swap worn effects in v1 (recommended) or replace lowest priority?
-9. **Reserve activation:** automatic when an active buddy is removed, or debug/UI only?
-10. **NPC gear management:** read-only in v1 (recommended) or player can equip NPC items from the card?
-11. **Item gifting:** defer player→NPC gifts to a later phase?
-12. **Coins for NPCs:** add `npc.coins` now (recommended for future shops) or skip until a shop exists?
-13. **New games timing:** after NPC economy acceptance (recommended) or in parallel?
-14. **Player visibility:** notify within 10 tiles, or show every NPC reward in a log?
+### 9.1 Locked decisions for Phase 2A
+
+| Decision | Choice |
+| --- | --- |
+| Active buddies per NPC | 2 |
+| Reserve buddies per NPC | 6 |
+| Global active companion cap | 80 |
+| NPC reward economy | Separate `npcMiniGames` / `npcLootTables` |
+| Companion drop on win | 80% while under cap |
+| Draw / loss | Small coins on draw; nothing on loss |
+| Auto-loadout order | Self first, then active companions |
+| Auto-swap | Never in v1; leftover items stay in the bag |
+| NPC gear UI | Read-only card in v1; debug can mutate |
+| New games | After NPC economy acceptance |
+
+Remaining product questions (deferred):
+
+1. **Reserve activation:** automatic when an active buddy is removed, or debug/UI only?
+2. **Item gifting:** when should players be able to give items to NPCs?
+3. **NPC coins:** future shop/economy design?
+4. **Player visibility:** toast only within 10 tiles (locked for v1), or a reward log later?
+5. **NPC checkers/chess:** after new games or before?
 
 ---
 
