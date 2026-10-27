@@ -1,8 +1,10 @@
 // "hd" voices: main-thread proxy for src/tts/kokoro.worker.js plus the Web
-// Audio output that plays its PCM. The game only runs Kokoro as fp16 on
-// WebGPU with shader-f16: q8f16 is garbled on WebGPU and WASM is too slow on
-// one thread (docs/tts.md), so anything else reports 'unsupported' and the
-// game stays on basic voices. Nothing here touches the DOM at import time.
+// Audio output that plays its PCM. The game runs Kokoro as q8
+// (model_quantized.onnx) on single-threaded WASM on every device; the owner
+// live-tested it (docs/tts.md 4.7). Device and model are always explicit, so
+// the worker never lands on WebGPU + q8f16, which is garbled. 'unsupported'
+// only means no WebAssembly or no working module worker. Nothing here touches
+// the DOM at import time.
 
 const WORKER_URL = new URL('../kokoro.worker.js', import.meta.url);
 
@@ -13,10 +15,8 @@ export function pitchToCents(pitch) {
   return Math.round(1200 * Math.log2(value));
 }
 
-/** Whether a worker `probe` result can run the fp16 model on WebGPU. */
-export function canRunHd(probe) {
-  return Boolean(probe?.gpu?.available && probe.gpu.shaderF16);
-}
+/** What the game asks the worker for. */
+export const HD_LOAD = Object.freeze({ type: 'load', device: 'wasm', model: 'q8' });
 
 /**
  * Overall download progress (0..1) from the worker's per-file progress
@@ -58,11 +58,13 @@ function defaultCreateWorker() {
  * @param {URL|string} [deps.workerUrl]
  * @param {((url:URL|string) => Worker)|null} [deps.createWorker] null = no workers here
  * @param {{ context(): AudioContext|null }|null} [deps.output] turns PCM into AudioBuffers
+ * @param {boolean} [deps.hasWasm] whether this browser has WebAssembly
  */
 export function createKokoroEngine({
   workerUrl = WORKER_URL,
   createWorker = defaultCreateWorker(),
-  output = null
+  output = null,
+  hasWasm = typeof globalThis.WebAssembly === 'object'
 } = {}) {
   let status = 'idle';
   let worker = null;
@@ -127,34 +129,34 @@ export function createKokoroEngine({
   /** Settles without throwing; check status() afterwards. */
   async function load(progress = null) {
     if (status === 'loading' || status === 'ready' || status === 'unsupported') return;
-    if (!createWorker) {
+    if (!createWorker || !hasWasm) {
       status = 'unsupported';
       return;
     }
     status = 'loading';
     onProgress = progress;
     tracker = createProgressTracker();
+    // A worker that cannot start at all (no module workers, script error) will
+    // not start next time either; a failed download might.
+    let workerBroken = false;
     try {
-      worker = createWorker(workerUrl);
+      try {
+        worker = createWorker(workerUrl);
+      } catch (error) {
+        workerBroken = true;
+        throw error;
+      }
       worker.addEventListener('message', onMessage);
       worker.addEventListener('error', event => {
+        workerBroken = true;
         failAll(new Error(event?.message || 'hd voice worker failed'));
       });
-      const probe = await request({ type: 'probe' }, 'probe');
-      if (!canRunHd(probe)) {
-        info = { probe };
-        status = 'unsupported';
-        teardown();
-        return;
-      }
-      // Explicit device and model: 'auto' would pick q8f16 on a WebGPU adapter
-      // without shader-f16, and an explicit device never falls back to WASM.
-      info = await request({ type: 'load', device: 'webgpu', model: 'fp16' }, 'loaded');
+      info = await request({ ...HD_LOAD }, 'loaded');
       onProgress?.(1);
       status = 'ready';
     } catch (error) {
       lastError = error;
-      status = 'error';
+      status = workerBroken ? 'unsupported' : 'error';
       failAll(error);
       teardown();
     } finally {

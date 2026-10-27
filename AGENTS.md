@@ -24,8 +24,8 @@ npm run vendor      # rebuild vendor/dicebear-voxel.js from vendor-src/dicebear.
 npm run render:pets # re-render data/cubeworld_pets.json from assets/cubeworld-src
 npm run vendor:tts  # rebuild vendor/kokoro.js, vendor/espeak-ng/, vendor/ort/ from node_modules
 npm run tts:model   # fetch pinned Kokoro files into git-ignored assets/tts/kokoro/
-                    # (default set "core": the game's fp16 model, ~178 MB; TTS_SETS="core wasm spike"
-                    # also fetches the q8f16 and q8 files the spike/ test page uses)
+                    # (default set "core": the game's q8 model, ~107 MB; TTS_SETS="core wasm spike"
+                    # also fetches the q8f16 and fp16 files the spike/ test page uses)
 ```
 
 `npm install` is only needed for `npm run vendor`, `npm run vendor:tts`, or when changing
@@ -65,7 +65,7 @@ dev tooling. Do not commit `node_modules/` or `assets/tts/kokoro/`.
 | `src/tts/settings.js`, `select.js` | Pure: `playpark.settings.v1` (voices off/basic/hd, volume), engine choice, pill and menu text |
 | `src/tts/controller.js` | Settings + engines + speaker glue (injected deps; who may speak, deferred engine swap) |
 | `src/tts/engines/webspeech.js` | "basic" voices: on-device `speechSynthesis` voices only, mapped from the pool |
-| `src/tts/engines/kokoro.js` | "hd" voices: worker proxy (fp16 on WebGPU with shader-f16 only) and Web Audio output |
+| `src/tts/engines/kokoro.js` | "hd" voices: worker proxy (q8 on single-threaded WASM, every device) and Web Audio output |
 | `src/tts/kokoro.worker.js` | Kokoro TTS module worker: loads the bundle and model from this site only (fetch guard), picks WebGPU or WASM |
 | `vendor-src/kokoro.js` | Source entry for `vendor/kokoro.js`; wraps kokoro-js so voices load from this site |
 | `vendor/kokoro.js` | Generated bundle (kokoro-js, Transformers.js, ONNX Runtime Web); do not hand-edit |

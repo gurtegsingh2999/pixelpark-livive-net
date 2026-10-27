@@ -121,7 +121,8 @@ export function createVoiceController({
       if (status === 'ready') {
         if (current.voices === 'hd') notice('hdReady');
       } else if (status === 'unsupported') {
-        downgradeFromHd('hdUnsupported');
+        // No WebAssembly or no working worker: hd will never load here.
+        downgradeFromHd('hdFailed');
       } else if (current.voices === 'hd') {
         // A failed download may work next time; keep hd stored, speak basic for now.
         notice('hdFailed');
@@ -144,7 +145,7 @@ export function createVoiceController({
     }
     if (current.voices !== 'hd') return;
     const status = statusOf('kokoro');
-    if (status === 'unsupported') downgradeFromHd('hdUnsupported');
+    if (status === 'unsupported') downgradeFromHd('hdFailed');
     else if (status === 'idle' || status === 'error') loadKokoro();
   }
 

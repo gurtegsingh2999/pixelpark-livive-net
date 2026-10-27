@@ -4,7 +4,7 @@ import {
   englishLocalVoices, guessGender, pickLocalVoice, createWebSpeechEngine
 } from '../src/tts/engines/webspeech.js';
 import {
-  pitchToCents, canRunHd, createProgressTracker, createKokoroEngine, createAudioOutput
+  pitchToCents, HD_LOAD, createProgressTracker, createKokoroEngine, createAudioOutput
 } from '../src/tts/engines/kokoro.js';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -108,41 +108,40 @@ test('Web Speech engine is unsupported without on-device English voices', async 
   assert.equal(createWebSpeechEngine({ synth: null, Utterance: null }).status(), 'unsupported');
 });
 
-test('pitch maps to detune cents; hd needs WebGPU with shader-f16', () => {
+test('pitch maps to detune cents; hd asks for q8 on WASM', () => {
   assert.equal(pitchToCents(1), 0);
   assert.equal(pitchToCents(2), 1200);
   assert.equal(pitchToCents(0.5), -1200);
   assert.equal(pitchToCents(0), 0);
-  assert.equal(canRunHd({ gpu: { available: true, shaderF16: true } }), true);
-  assert.equal(canRunHd({ gpu: { available: true, shaderF16: false } }), false);
-  assert.equal(canRunHd({ gpu: { available: false } }), false);
+  assert.deepEqual({ ...HD_LOAD }, { type: 'load', device: 'wasm', model: 'q8' });
 });
 
 test('download progress is weighted by size and stays under 100% until loaded', () => {
   const tracker = createProgressTracker();
   tracker.update({ status: 'initiate', file: 'config.json' });
-  assert.equal(tracker.update({ status: 'progress', file: 'onnx/model_fp16.onnx', loaded: 50, total: 100 }), 0.5);
+  assert.equal(tracker.update({ status: 'progress', file: 'onnx/model_quantized.onnx', loaded: 50, total: 100 }), 0.5);
   assert.equal(tracker.update({ status: 'progress', file: 'tokenizer.json', loaded: 0, total: 100 }), 0.25);
   tracker.update({ status: 'done', file: 'tokenizer.json' });
-  assert.equal(tracker.update({ status: 'done', file: 'onnx/model_fp16.onnx' }), 0.99);
+  assert.equal(tracker.update({ status: 'done', file: 'onnx/model_quantized.onnx' }), 0.99);
 });
 
-function fakeWorker({ probe = { gpu: { available: true, shaderF16: true } }, failLoad = false } = {}) {
+function fakeWorker({ failLoad = false, crash = false } = {}) {
   const listeners = { message: [], error: [] };
   const worker = {
     posted: [],
     terminated: false,
     addEventListener(type, fn) { listeners[type].push(fn); },
+    crash() { for (const fn of listeners.error) fn({ message: 'module workers not supported' }); },
     send(data) { for (const fn of listeners.message) fn({ data }); },
     terminate() { worker.terminated = true; },
     postMessage(message) {
       worker.posted.push(message);
       queueMicrotask(() => {
-        if (message.type === 'probe') worker.send({ type: 'probe', ...probe });
+        if (crash) return worker.crash();
         if (message.type === 'load') {
-          worker.send({ type: 'progress', status: 'progress', file: 'onnx/model_fp16.onnx', loaded: 5, total: 10 });
+          worker.send({ type: 'progress', status: 'progress', file: 'onnx/model_quantized.onnx', loaded: 5, total: 10 });
           if (failLoad) worker.send({ type: 'error', id: null, during: 'load', message: 'no adapter' });
-          else worker.send({ type: 'loaded', device: 'webgpu', model: 'fp16' });
+          else worker.send({ type: 'loaded', device: 'wasm', model: 'q8' });
         }
         if (message.type === 'generate') {
           worker.send({ type: 'audio', id: message.id, pcm: new Float32Array([0.1, 0.2]), sampleRate: 24000 });
@@ -182,15 +181,14 @@ function fakeContext() {
   return context;
 }
 
-test('Kokoro engine probes, then loads fp16 on WebGPU explicitly', async () => {
+test('Kokoro engine loads q8 on WASM explicitly, with no WebGPU probe', async () => {
   const worker = fakeWorker();
   const output = { context: () => fakeContext() };
   const progress = [];
   const engine = createKokoroEngine({ createWorker: () => worker, output });
   await engine.load(value => progress.push(value));
   assert.equal(engine.status(), 'ready');
-  assert.deepEqual(worker.posted.map(message => message.type), ['probe', 'load']);
-  assert.deepEqual(worker.posted[1], { type: 'load', device: 'webgpu', model: 'fp16' });
+  assert.deepEqual(worker.posted, [{ type: 'load', device: 'wasm', model: 'q8' }]);
   assert.deepEqual(progress, [0.5, 1]);
 
   const buffer = await engine.synth('hello', { engineVoice: 'af_heart', rate: 1.06, pitch: 0.92 });
@@ -200,18 +198,26 @@ test('Kokoro engine probes, then loads fp16 on WebGPU explicitly', async () => {
   assert.deepEqual([buffer.length, buffer.sampleRate, buffer.data[1]], [2, 24000, Float32Array.from([0.2])[0]]);
 });
 
-test('Kokoro engine reports unsupported without shader-f16 and never loads q8f16', async () => {
-  const worker = fakeWorker({ probe: { gpu: { available: true, shaderF16: false } } });
+test('Kokoro engine is unsupported only without WebAssembly or a working worker', async () => {
+  const worker = fakeWorker({ crash: true });
   const engine = createKokoroEngine({ createWorker: () => worker });
   await engine.load();
   assert.equal(engine.status(), 'unsupported');
-  assert.deepEqual(worker.posted.map(message => message.type), ['probe']);
   assert.ok(worker.terminated);
   await assert.rejects(engine.synth('hi', { engineVoice: 'af_heart' }));
 
   const noWorkers = createKokoroEngine({ createWorker: null });
   await noWorkers.load();
   assert.equal(noWorkers.status(), 'unsupported');
+
+  let made = 0;
+  const noWasm = createKokoroEngine({ createWorker: () => { made += 1; return fakeWorker(); }, hasWasm: false });
+  await noWasm.load();
+  assert.deepEqual([noWasm.status(), made], ['unsupported', 0]);
+
+  const throwing = createKokoroEngine({ createWorker: () => { throw new Error('no module workers'); } });
+  await throwing.load();
+  assert.equal(throwing.status(), 'unsupported');
 });
 
 test('Kokoro engine load failures settle as error and can be retried', async () => {

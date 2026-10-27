@@ -1,6 +1,6 @@
 # Play Park — Neighbour Voices (TTS)
 
-**Status:** Waves 1–2 wired: basic (Web Speech) everywhere, hd (Kokoro fp16) on WebGPU with shader-f16. See 4.7.  
+**Status:** Waves 1–2 wired: basic (Web Speech) everywhere, hd (Kokoro q8 on single-threaded WASM) on every device. See 4.7.  
 **Baseline:** `ab22683`, 289/289 tests passing  
 **Theme:** Neighbours speak their dialogue lines out loud, generated on demand in the browser, with distinct English voices.
 
@@ -56,7 +56,7 @@ An open 82M-parameter StyleTTS2-style model running on ONNX Runtime Web through 
 
 | | |
 | --- | --- |
-| Download | One-time: model 163 MB (`model_fp16.onnx`, the only file that is both correct and fast on WebGPU), ~86 MB (`model_q8f16.onnx`) or 92.4 MB (`model_quantized.onnx`), plus the ORT WASM runtime and one small style file per voice (~0.5 MB each). Cached by the browser after the first load. |
+| Download | One-time: model 92.4 MB (`model_quantized.onnx`, q8, what the game uses on WASM), ~86 MB (`model_q8f16.onnx`) or 163 MB (`model_fp16.onnx`, test page only), plus the ORT WASM runtime and one small style file per voice (~0.5 MB each). Cached by the browser after the first load. |
 | Latency | Seconds per line on WASM and much faster on WebGPU. **Must be benchmarked on target devices (Wave 0).** |
 | Voices | 28 English voices: 11 American female, 9 American male, 4 British female, 4 British male (`af_*`, `am_*`, `bf_*`, `bm_*`) |
 | Male/female | Encoded in the voice id prefix |
@@ -101,8 +101,8 @@ Do this before Wave 1 ships. It doesn't block the benchmark spike.
 
 **Use Kokoro (B) as the main engine, with Web Speech (A) as the fallback, and keep voices off by default.**
 
-- The player turns on **voices** in a new settings section. The first time, a "hd 42%" progress pill appears (hd is ~190 MB on WebGPU: the 163 MB fp16 model, the 21.6 MB ORT runtime, the bundles, and 0.5 MB per voice used), and Web Speech speaks lines until Kokoro is ready.
-- If WebGPU is missing and the Wave 0 benchmark shows WASM is too slow, the device stays on Web Speech. Show "hd voices need a faster device" instead of lagging.
+- The player turns on **voices** in a new settings section. The first time, a "hd 42%" progress pill appears (hd is ~116 MB: the 92.4 MB q8 model, the 21.6 MB ORT runtime, 2.2 MB of bundles, and 0.5 MB per voice used), and Web Speech speaks lines until Kokoro is ready.
+- As built, hd runs on WASM everywhere (4.7), so there is no "faster device" gate; if hd can't load, the game says "hd voices didn't load" and speaks basic.
 - The engine sits behind one interface, so swapping Kokoro for Kitten later is a data and config change, not a rewrite. If the benchmark kills Kokoro on mid-range hardware, Kitten (C) is the fallback plan.
 
 Why not A alone? Inconsistent voices work against "each neighbour has their own voice", and quality varies a lot by OS. Why not C first? Eight American voices for a 40-neighbour park is thin, and Kokoro's 28 voices with gender and accent labels fit this game better.
@@ -124,7 +124,7 @@ Why not A alone? Inconsistent voices work against "each neighbour has their own 
 | `src/tts/kokoro.worker.js` | Loads `vendor/kokoro.js` with local paths. `load` / `generate` / `cancel` messages. Picks WebGPU vs WASM. |
 | `vendor-src/kokoro.js` → `vendor/kokoro.js` | esbuild bundle (new `npm run vendor:tts`), like the DiceBear bundle |
 | `vendor/ort/` | ORT WASM binaries, copied and committed |
-| `assets/tts/kokoro/` | `model_fp16.onnx` (game), `config.json`, tokenizer files, and `voices/<id>.bin` for pool voices only |
+| `assets/tts/kokoro/` | `model_quantized.onnx` (game), `config.json`, tokenizer files, and `voices/<id>.bin` for pool voices only |
 
 Engine interface:
 
@@ -186,16 +186,16 @@ The new key `playpark.settings.v1` is separate from the save, since settings are
 ### 4.6 Hosting (as proposed)
 
 - Commit the `.onnx` directly. It's under GitHub's 100 MB hard limit, and GitHub Pages serves it from the same origin. Don't use Git LFS: Pages doesn't serve LFS objects reliably (verify before relying on it).
-- As built, the model is not committed: `scripts/kokoro.lock` pins it and the Pages workflow fetches it at build time (git-ignored locally). Had it been committed, every clone would grow by ~180 MB. If that ever changes, move model assets to an orphan `tts-assets` branch, or a second Pages repo under the same custom domain (`pp.livive.net/tts/…`).
+- As built, the model is not committed: `scripts/kokoro.lock` pins it and the Pages workflow fetches it at build time (git-ignored locally). Had it been committed, every clone would grow by ~107 MB. If that ever changes, move model assets to an orphan `tts-assets` branch, or a second Pages repo under the same custom domain (`pp.livive.net/tts/…`).
 - Update `AGENTS.md`: "no runtime network requests" becomes "no requests to third-party hosts; large same-origin assets load only on opt-in."
 
 ### 4.7 As built (Waves 1–2)
 
-- **Measured** (M-series Mac, Chrome, Metal): WebGPU + fp16 ~0.4 s per line warm, 1.1 s cold. WebGPU + q8f16 is garbled; WebGPU + q8 ~7 s; WASM single-thread q8f16 ~6.5 s per line. Multi-thread WASM is untested (it needs COOP/COEP, which GitHub Pages can't send).
-- **hd** runs only as fp16 on WebGPU with `shader-f16`. The game sends the worker `probe`, then `load { device: 'webgpu', model: 'fp16' }`; anything else is `unsupported`, the game says "hd voices need a faster device" and stores basic. No WASM hd and no COOP/COEP service worker in the game.
+- **Measured** (M-series Mac, Chrome, Metal): WebGPU + fp16 ~0.4 s per line warm, 1.1 s cold. WebGPU + q8f16 is garbled; WebGPU + q8 ~7 s; WASM single-thread q8f16 ~6.5 s per line. WASM single-thread q8 has no timed number yet; the owner's live test on the spike page found it good. Multi-thread WASM is untested (it needs COOP/COEP, which GitHub Pages can't send).
+- **hd** is q8 (`model_quantized.onnx`) on single-threaded WASM, on every device. The owner live-tested it on the spike page (no `?coi=1`) and it works well, so it replaced the first build's WebGPU-fp16-only gate. The game always sends `load { device: 'wasm', model: 'q8' }`: an explicit device never falls back and never lands on WebGPU + q8f16 (garbled). WebGPU fp16 stays on the test page only. `unsupported` now only means no WebAssembly or no working module worker; then the game says "hd voices didn't load" and stores basic. No COOP/COEP service worker in the game, so WASM stays single-threaded.
 - **Fallback:** while hd downloads, basic voices speak; the switch to hd waits for the current line to end. A failed download keeps hd stored and speaks basic for the session.
 - **Settings:** `playpark.settings.v1` = `{ voices: off|basic|hd, volume, bubbles, lastOn }`, default off. 🔊 topbar pill (download % while loading) and a voices beat (off / basic / hd / volume / back); `M` toggles off and the last mode.
-- **Lock sets:** `core` = fp16 + tokenizer + pool voices (the game), `wasm` = q8f16 and `spike` = q8 for the test page only. The workflow ships `core wasm spike` until `spike/` is deleted, then `core`.
+- **Lock sets:** `core` = q8 + tokenizer + pool voices (the game, ~107 MB), `wasm` = q8f16 and `spike` = fp16 for the test page only. The workflow ships `core wasm spike` until `spike/` is deleted, then `core`.
 - **Bubbles:** `say` events reach the controller through `bridgeBehaviorEvents({ onSay })`, but stay silent: `speak.bubbles.enabled` is false and there is no settings toggle.
 - **Known gap, offline:** Transformers.js puts the model and tokenizer in Cache Storage (`transformers-cache`), but the ORT wasm and the voice `.bin` files are plain fetches and rely on the HTTP cache. hd is not guaranteed to work offline yet; fixing it means caching those files too (a `vendor-src/kokoro.js` change and vendor rebuild).
 

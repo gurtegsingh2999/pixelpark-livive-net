@@ -1,14 +1,14 @@
 # Kokoro-82M-v1.0-ONNX files, fetched by scripts/fetch_tts_model.sh into assets/tts/kokoro/.
 # revision 1939ad2a8e416c0acfeecc08a694d14ef25f2231
 # columns: sha256 bytes set path
-# sets: core = the game (fp16 for hd voices on WebGPU, tokenizer, pool voices);
-#       wasm = q8f16, only for the spike page's WASM runs; spike = q8, Wave 0 test only
+# sets: core = the game (q8 for hd voices on single-threaded WASM, tokenizer, pool voices);
+#       wasm = q8f16 and spike = fp16, only for the spike/ test page
 df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f 44 core config.json
 be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20 113 core tokenizer_config.json
 77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34 3497 core tokenizer.json
-ba4527a874b42b21e35f468c10d326fdff3c7fc8cac1f85e9eb6c0dfc35c334a 163234740 core onnx/model_fp16.onnx
+ba4527a874b42b21e35f468c10d326fdff3c7fc8cac1f85e9eb6c0dfc35c334a 163234740 spike onnx/model_fp16.onnx
 04c658aec1b6008857c2ad10f8c589d4180d0ec427e7e6118ceb487e215c3cd0 86033585 wasm onnx/model_q8f16.onnx
-fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478 92361116 spike onnx/model_quantized.onnx
+fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478 92361116 core onnx/model_quantized.onnx
 c4a6b876047fd7fb472edf4ebd63cfac7c3b958a7cae7c106e8f038ca6308c45 522240 core voices/af_alloy.bin
 4a004c33430762e2461eedb2013fad808ef4ab3121f5300f554476caf58d8361 522240 core voices/af_aoede.bin
 f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b 522240 core voices/af_bella.bin

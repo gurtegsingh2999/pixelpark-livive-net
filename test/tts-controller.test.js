@@ -183,12 +183,12 @@ test('hd: basic voices speak while it downloads, and the swap waits for the line
   assert.deepEqual(player.played, ['Yay, we are friends now!']);
 });
 
-test('hd on a device without WebGPU + shader-f16 falls back to basic and stores it', async () => {
+test('hd where it can never load (no WebAssembly or worker) falls back to basic and stores it', async () => {
   const { controller, kokoro, saved, notices } = setup();
   controller.setMode('hd');
   kokoro.finish('unsupported');
   await flush();
-  assert.deepEqual(notices, ['hdUnsupported']);
+  assert.deepEqual(notices, ['hdFailed']);
   assert.equal(controller.settings().voices, 'basic');
   assert.equal(saved.at(-1).voices, 'basic');
   assert.equal(controller.state().engine, 'webspeech');

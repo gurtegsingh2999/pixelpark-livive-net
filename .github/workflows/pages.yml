@@ -16,8 +16,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # core = the game's fp16 model, tokenizer, pool voices. wasm (q8f16) and spike (q8) are
-  # only for the Wave 0 test page: this becomes `core` when spike/ is deleted.
+  # core = the game's q8 model (WASM), tokenizer, pool voices. wasm (q8f16) and spike (fp16)
+  # are only for the Wave 0 test page: this becomes `core` when spike/ is deleted.
   TTS_SETS: core wasm spike
 
 jobs:

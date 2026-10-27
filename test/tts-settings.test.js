@@ -95,7 +95,7 @@ test('voices status, pill, and menu text', () => {
   assert.deepEqual(menu.items.map(item => item.id), ['off', 'basic', 'hd', 'volume', 'back']);
   assert.equal(menu.items.find(item => item.id === 'hd').className, 'primary', 'current mode is marked');
   assert.equal(menu.items.find(item => item.id === 'volume').label, 'volume 80%');
-  assert.match(menu.items.find(item => item.id === 'hd').label, /~190 MB, one-time/);
+  assert.match(menu.items.find(item => item.id === 'hd').label, /~116 MB, one-time/);
   for (const item of menu.items) {
     const words = item.label.replace(' MB', ' mb');
     assert.equal(words, words.toLowerCase(), `${item.id} copy is lower-case`);

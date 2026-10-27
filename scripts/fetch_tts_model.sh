@@ -3,8 +3,8 @@
 # assets/tts/kokoro/ (git-ignored). Used by `npm run tts:model` locally and by
 # .github/workflows/pages.yml at build time, so both trees are identical.
 #
-#   TTS_SETS="core"        sets to fetch (default "core": the game's fp16 model, tokenizer,
-#                          voices; add "wasm" for q8f16 and "spike" for q8, test page only)
+#   TTS_SETS="core"        sets to fetch (default "core": the game's q8 model, tokenizer,
+#                          voices; add "wasm" for q8f16 and "spike" for fp16, test page only)
 #   --check                verify only, never download; exit 1 if anything is missing or wrong
 #
 # Every file is checked against its size and sha256. A file already on disk that

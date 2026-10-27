@@ -141,7 +141,7 @@
     "items": [
       { "id": "off", "label": "🔇 off" },
       { "id": "basic", "label": "🔊 basic voices" },
-      { "id": "hd", "label": "✨ hd voices · ~190 MB, one-time" },
+      { "id": "hd", "label": "✨ hd voices · ~116 MB, one-time" },
       { "id": "volume", "label": "volume {volume}%" },
       { "id": "back", "label": "back" }
     ],
@@ -150,7 +150,6 @@
       "muted": "voices off. press m to turn them back on.",
       "unmuted": "voices on.",
       "hdReady": "hd voices ready.",
-      "hdUnsupported": "hd voices need a faster device. using basic voices.",
       "hdFailed": "hd voices didn't load. using basic voices for now.",
       "basicUnsupported": "no voices on this device, sorry."
     }
