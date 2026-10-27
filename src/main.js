@@ -1,4 +1,4 @@
-import { Game } from './game.js';
+import { Game, COMPANION_CAPS } from './game.js';
 import {
   createRecipe,
   createCompanionRecipe,
@@ -38,6 +38,8 @@ import dialogueData from '../data/dialogues.json' with { type: 'json' };
 import behaviorData from '../data/behaviors.json' with { type: 'json' };
 import miniGamesData from '../data/minigames.json' with { type: 'json' };
 import { rollReward, applyReward } from './rewards.js';
+import { awardNpcGame } from './npc/game-rewards.js';
+import { autoEquipOwner } from './npc/loadout.js';
 
 const MAX_NPCS = engineConfig.crowd.maxNpcs;
 const DEFAULT_CROWD = engineConfig.crowd.defaultCount;
@@ -532,7 +534,7 @@ function socialLine({ key }) {
 
 function ensureBehaviorRuntime() {
   if (behaviorRuntime || !game) return behaviorRuntime;
-  npcGameAdapter = createNpcGameAdapter({ host });
+  npcGameAdapter = createNpcGameAdapter({ host, onResult: handleNpcGameResult });
   bubbles = bubbles || new SpeechBubbles({ getActor: resolveCharacter });
   const social = createSocialActions({
     bubbles,
@@ -564,6 +566,209 @@ function syncBehaviorWorld({ reset = false } = {}) {
   if (!behaviorRuntime || !game) return;
   if (reset) behaviorRuntime.setWorld({ actors: behaviorActors(), player: game.player, now: behaviorRuntime.now });
   else behaviorRuntime.blackboard.sync(behaviorActors(), game.player, behaviorRuntime.now);
+}
+
+function isNpcCharacter(character) {
+  return Boolean(character && Array.isArray(game?.npcs) && game.npcs.includes(character));
+}
+
+function npcNearPlayer(character) {
+  const player = game?.player;
+  if (!player || !character) return false;
+  return Math.abs(player.x - character.x) + Math.abs(player.y - character.y) <= 10;
+}
+
+function gameTitle(gameId) {
+  return host?.getMeta?.(gameId)?.title || gameId || 'a game';
+}
+
+function npcGameNow() {
+  return (Number(game?.time) || 0) * 1000;
+}
+
+/** Rebuild behavior actors, persist, and refresh any open NPC UI. */
+function settleNpcWorld() {
+  syncBehaviorWorld({ reset: true });
+  saveNow();
+  panels?.updateDebugUI?.();
+  if (panels?.cardCharacter) panels.showCard?.(panels.cardCharacter);
+  panels?.renderCompanion?.();
+}
+
+function toastNpcReward(winner, title, notices) {
+  const summary = Array.isArray(notices) && notices.length
+    ? `: ${notices.join(' · ')}`
+    : '.';
+  showToast(`${winner.name} won ${title}${summary}`);
+}
+
+/**
+ * NPC game adapter result hook. Rewards only NPC owners; the player's stats,
+ * inventory, dialogue, and cheer are never involved.
+ */
+function handleNpcGameResult({ winnerId, loserId, game: gameId, outcome, session } = {}) {
+  if (!game) return;
+  const now = npcGameNow();
+  const title = gameTitle(gameId);
+
+  if (outcome === 'draw') {
+    const seats = Array.isArray(session?.seats)
+      ? session.seats.map(seat => seat?.character).filter(isNpcCharacter)
+      : [];
+    const participants = seats.filter((npc, index) => seats.indexOf(npc) === index);
+    if (!participants.length) return;
+
+    const results = participants.map((npc, index) => awardNpcGame({
+      game,
+      winner: npc,
+      loser: participants[index === 0 ? 1 : 0] || null,
+      gameId,
+      outcome: 'draw',
+      now
+    }));
+    const awarded = results.filter(result => result.ok);
+    if (!awarded.length) return;
+
+    settleNpcWorld();
+    const nearby = participants.find(npcNearPlayer);
+    if (nearby) {
+      const notices = awarded.flatMap(result => result.notices);
+      const names = participants.map(npc => npc.name).join(' and ');
+      showToast(notices.length
+        ? `${names} drew ${title}: ${notices.join(' · ')}`
+        : `${names} drew ${title}.`);
+    }
+    return;
+  }
+
+  const winner = resolveCharacter(winnerId);
+  if (!isNpcCharacter(winner)) return;
+  const loser = resolveCharacter(loserId);
+
+  const result = awardNpcGame({
+    game,
+    winner,
+    loser: isNpcCharacter(loser) ? loser : null,
+    gameId,
+    // `outcome` is seat-relative in the adapter; the resolved winner always
+    // rolls the win table.
+    outcome: 'win',
+    now
+  });
+  if (!result.ok) return;
+
+  settleNpcWorld();
+  if (npcNearPlayer(winner)) toastNpcReward(winner, title, result.notices);
+}
+
+function debugNpcTarget(character) {
+  if (!isNpcCharacter(character)) {
+    showToast('Pick a neighbour on the map first.');
+    return null;
+  }
+  return character;
+}
+
+function randomEffectItemId() {
+  const ids = [];
+  const seen = new Set();
+  for (const effect of Object.values(EFFECT_CATALOG)) {
+    const id = effect?.itemId;
+    if (typeof id !== 'string' || !id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids.length ? randomFrom(ids) : null;
+}
+
+function autoEquipNpcLoadout(npc) {
+  const companions = typeof game?.getCompanionsFor === 'function'
+    ? game.getCompanionsFor(npc.id)
+    : [];
+  return autoEquipOwner(npc, companions || [], { now: npcGameNow() });
+}
+
+function onGrantNpcEffect(character) {
+  const npc = debugNpcTarget(character);
+  if (!npc) return;
+  const itemId = randomEffectItemId();
+  const item = itemId ? createItemInstance(itemId) : null;
+  if (!item) {
+    showToast('No effect items are available right now.');
+    return;
+  }
+
+  if (!Array.isArray(npc.inventory)) npc.inventory = [];
+  npc.inventory.push(item);
+  const loadout = autoEquipNpcLoadout(npc);
+  settleNpcWorld();
+  const worn = loadout.equipped.length ? ' and equipped it' : '';
+  showToast(`Gave ${npc.name} a ${item.name || item.id}${worn}.`);
+}
+
+function onGrantNpcBuddy(character) {
+  const npc = debugNpcTarget(character);
+  if (!npc) return;
+
+  const buddy = {
+    name: randomFrom(COMPANION_NAMES),
+    recipe: createCompanionRecipe()
+  };
+  const counts = game.companionCounts?.(npc) || { active: 0, reserve: 0 };
+  const underActiveCap = counts.active < COMPANION_CAPS.npcActiveMax;
+  const underGlobalCap = (game.companions?.length || 0) < COMPANION_CAPS.globalActiveMax;
+
+  if (underActiveCap && underGlobalCap) {
+    game.addActiveCompanion?.(npc, buddy);
+    settleNpcWorld();
+    showToast(`${npc.name} adopted ${buddy.name}.`);
+    return;
+  }
+
+  if (counts.reserve >= COMPANION_CAPS.npcReserveMax) {
+    showToast(`${npc.name}'s collection is full.`);
+    return;
+  }
+
+  const reserved = game.reserveCompanion?.(npc, buddy);
+  settleNpcWorld();
+  showToast(`${npc.name} added ${reserved?.name || buddy.name} to their collection.`);
+}
+
+function onSimulateNpcWin(character) {
+  const winner = debugNpcTarget(character);
+  if (!winner) return;
+  const loser = (game?.npcs || []).find(npc => npc !== winner && !npc.inMiniGame);
+  if (!loser) {
+    showToast('Need another neighbour for a match.');
+    return;
+  }
+
+  const result = awardNpcGame({
+    game,
+    winner,
+    loser,
+    gameId: 'tic-tac-toe',
+    outcome: 'win',
+    now: npcGameNow()
+  });
+  if (!result.ok) {
+    showToast('That win could not be scored.');
+    return;
+  }
+
+  settleNpcWorld();
+  toastNpcReward(winner, gameTitle('tic-tac-toe'), result.notices);
+}
+
+function onAutoEquipNpc(character) {
+  const npc = debugNpcTarget(character);
+  if (!npc) return;
+  const loadout = autoEquipNpcLoadout(npc);
+  settleNpcWorld();
+  showToast(loadout.equipped.length
+    ? `${npc.name} auto-equipped ${loadout.equipped.length} item${loadout.equipped.length === 1 ? '' : 's'}.`
+    : `${npc.name} has nothing new to wear.`);
 }
 
 function completeContinuousActivity() {
@@ -889,7 +1094,9 @@ function applyState(state) {
         effectGhosts: Array.isArray(npc.effectGhosts) ? npc.effectGhosts : [],
         x: hasPosition ? Math.round(Number(npc.x)) : -1,
         y: hasPosition ? Math.round(Number(npc.y)) : -1,
-        direction: Number(npc.direction) || 0
+        direction: Number(npc.direction) || 0,
+        coins: Number.isFinite(npc.coins) ? npc.coins : 0,
+        stabledCompanions: Array.isArray(npc.stabledCompanions) ? npc.stabledCompanions : []
       };
       if (!isWalkable(terrain[entry.y]?.[entry.x])) {
         const spot = findOpenTile(terrain, { x: rawPlayer.x, y: rawPlayer.y });
@@ -1329,6 +1536,10 @@ function boot() {
     getHostState: () => host?.getState?.() || null,
     getBehaviorSummary: () => behaviorRuntime?.snapshot?.() || null,
     onGrantEffects: grantAllEffects,
+    onGrantNpcEffect,
+    onGrantNpcBuddy,
+    onSimulateNpcWin,
+    onAutoEquipNpc,
     onTriggerNpcGame: triggerNpcGame,
     onRosterChanged: () => syncBehaviorWorld({ reset: true }),
     onToast: showToast,

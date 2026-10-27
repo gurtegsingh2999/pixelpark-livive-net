@@ -2,10 +2,197 @@ import { avatarDataUrl, bindAnimatedAvatar } from '../avatar.js';
 import { loadStats } from '../storage.js';
 import { formatCompanionInfo } from '../characters.js';
 import { activeEntries, equip, getEffectForItem, unequip } from '../effects.js';
+import { COMPANION_CAPS } from '../game.js';
 
 const $ = id => document.getElementById(id);
 
 export const TABS = ['backpack', 'companions', 'friends', 'stats', 'debug'];
+
+const EFFECT_FALLBACK_ICON = '✨';
+
+function countLabel(count, singular, plural = `${singular}s`) {
+  const value = Number.isFinite(count) ? count : 0;
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function effectSummary(entry) {
+  const effect = entry?.effect || null;
+  return {
+    id: effect?.id || entry?.effectId || entry?.itemId || '',
+    name: effect?.name || effect?.id || entry?.itemId || 'effect',
+    slot: entry?.slot || effect?.slot || '',
+    badge: effectBadge(effect) || entry?.slot || '',
+    icon: effect?.ui?.icon || EFFECT_FALLBACK_ICON
+  };
+}
+
+/** Worn effect chips for any character, owner or companion. Pure. */
+export function wornEffectSummaries(character, now = 0) {
+  if (!character) return [];
+  return activeEntries(character, now)
+    .filter(entry => entry.phase === 'in')
+    .map(effectSummary);
+}
+
+/**
+ * A character is an NPC roster card when it is neither the player nor a
+ * companion. Reserve companion copies keep `isCompanion`, so they stay out.
+ */
+export function shouldShowNpcRoster(character) {
+  if (!character || typeof character !== 'object') return false;
+  if (character.isPlayer || character.isCompanion) return false;
+  return character.id !== 'player';
+}
+
+/** Compact "2/2 active · 1 in reserve" roster label. */
+export function npcRosterLabel(counts = {}) {
+  const active = Number.isFinite(counts.active) ? Math.max(0, counts.active) : 0;
+  const reserve = Number.isFinite(counts.reserve) ? Math.max(0, counts.reserve) : 0;
+  const cap = Number.isFinite(counts.cap) && counts.cap > 0 ? counts.cap : null;
+  const activeLabel = cap ? `${active}/${cap} active` : `${active} active`;
+  return `${activeLabel} · ${reserve} in reserve`;
+}
+
+function bagSummary(character, inventory) {
+  const items = Array.isArray(inventory) ? inventory : [];
+  const effectNames = [];
+  const effects = [];
+  const otherNames = [];
+  const seen = new Set();
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const key = item.uid || item.id || null;
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    const effect = getEffectForItem(item);
+    const name = effect?.name || item.name || item.id || 'item';
+    if (effect) {
+      effectNames.push(name);
+      effects.push(effectSummary({ effect, slot: effect.slot, itemId: item.id }));
+    } else {
+      otherNames.push(name);
+    }
+  }
+  return {
+    count: items.length,
+    effectNames,
+    effects,
+    otherNames,
+    coins: Number.isFinite(character?.coins) ? character.coins : 0
+  };
+}
+
+function bagLabel(bag) {
+  const count = Number.isFinite(bag?.count) ? bag.count : 0;
+  if (!count) return 'empty';
+  const effectCount = Array.isArray(bag?.effectNames) ? bag.effectNames.length : 0;
+  return `${countLabel(count, 'item')} · ${countLabel(effectCount, 'effect item')}`;
+}
+
+/**
+ * Pure NPC card model: buddies, reserve buddies, worn effects, bag, and labels.
+ * `companions` may be the whole flat list or `game.getCompanionsFor(id)`.
+ * `reserves`/`inventory` default to the character's own collections.
+ */
+export function npcCardSummary(character, options = {}) {
+  const isNpc = shouldShowNpcRoster(character);
+  const now = Number.isFinite(options.now) ? options.now : 0;
+  const companions = Array.isArray(options.companions) ? options.companions : [];
+  const reserves = Array.isArray(options.reserves)
+    ? options.reserves
+    : (Array.isArray(character?.stabledCompanions) ? character.stabledCompanions : []);
+  const inventory = Array.isArray(options.inventory)
+    ? options.inventory
+    : (Array.isArray(character?.inventory) ? character.inventory : []);
+  const cap = Number.isFinite(options.cap) ? options.cap : null;
+
+  const ownedCompanions = isNpc
+    ? companions.filter(comp => comp && (!comp.buddyId || comp.buddyId === character.id))
+    : [];
+
+  const activeBuddies = ownedCompanions.map(comp => {
+    const worn = wornEffectSummaries(comp, now);
+    return {
+      id: comp.id || '',
+      name: comp.name || 'Buddy',
+      role: 'active',
+      recipe: comp.recipe || null,
+      effects: worn.map(entry => entry.name),
+      effectEntries: worn
+    };
+  });
+
+  const reserveBuddies = (isNpc ? reserves : [])
+    .filter(comp => comp && typeof comp === 'object')
+    .map(comp => {
+      const worn = wornEffectSummaries(comp, now);
+      return {
+        id: comp.id || '',
+        name: comp.name || 'Buddy',
+        role: 'reserve',
+        recipe: comp.recipe || null,
+        effects: worn.map(entry => entry.name),
+        effectEntries: worn
+      };
+    });
+
+  const worn = wornEffectSummaries(character, now);
+  const bag = bagSummary(character, inventory);
+  const counts = {
+    active: activeBuddies.length,
+    reserve: reserveBuddies.length,
+    cap,
+    bag: bag.count,
+    coins: bag.coins
+  };
+
+  return {
+    isNpc,
+    kind: character?.isPlayer
+      ? 'player'
+      : character?.isCompanion
+        ? 'companion'
+        : isNpc ? 'npc' : 'none',
+    counts,
+    activeBuddies,
+    reserveBuddies,
+    worn,
+    wornNames: worn.map(entry => entry.name),
+    bag,
+    labels: {
+      buddies: npcRosterLabel(counts),
+      bag: bagLabel(bag)
+    }
+  };
+}
+
+/** Compact park-wide NPC roster/economy numbers for the debug tab. Pure. */
+export function npcEconomySummary(npcs = [], companions = []) {
+  const roster = Array.isArray(npcs)
+    ? npcs.filter(npc => npc && !npc.isPlayer && npc.id !== 'player')
+    : [];
+  const list = Array.isArray(companions) ? companions.filter(Boolean) : [];
+  const activeBuddies = list.filter(comp => comp.buddyId && comp.buddyId !== 'player').length;
+  const reserveBuddies = roster.reduce((total, npc) => (
+    total + (Array.isArray(npc.stabledCompanions) ? npc.stabledCompanions.length : 0)
+  ), 0);
+  const npcsWithReserve = roster.filter(npc => (
+    Array.isArray(npc.stabledCompanions) && npc.stabledCompanions.length > 0
+  )).length;
+  const coins = roster.reduce((total, npc) => (
+    total + (Number.isFinite(npc.coins) ? npc.coins : 0)
+  ), 0);
+
+  return {
+    npcCount: roster.length,
+    globalActive: list.length,
+    activeBuddies,
+    reserveBuddies,
+    npcsWithReserve,
+    coins,
+    label: `${list.length} followers · ${reserveBuddies} in reserve · ${npcsWithReserve}/${roster.length} NPCs stocked`
+  };
+}
 
 /**
  * Resolve what clicking a bag item should do, without branching on item ids.
@@ -67,6 +254,10 @@ export class PanelsUI {
     getBehaviorSummary,
     onGrantEffects,
     onTriggerNpcGame,
+    onGrantNpcEffect,
+    onGrantNpcBuddy,
+    onSimulateNpcWin,
+    onAutoEquipNpc,
     onRosterChanged,
     onToast
   }) {
@@ -95,9 +286,14 @@ export class PanelsUI {
     this.getBehaviorSummary = getBehaviorSummary;
     this.onGrantEffects = onGrantEffects;
     this.onTriggerNpcGame = onTriggerNpcGame;
+    this.onGrantNpcEffect = onGrantNpcEffect;
+    this.onGrantNpcBuddy = onGrantNpcBuddy;
+    this.onSimulateNpcWin = onSimulateNpcWin;
+    this.onAutoEquipNpc = onAutoEquipNpc;
     this.onRosterChanged = onRosterChanged;
     this.onToast = onToast;
     this.cardCharacter = null;
+    this.lastNpcCharacter = null;
     this.activeTab = null;
     this.lastActiveTab = 'backpack';
     this.focusedIndex = 0;
@@ -610,6 +806,236 @@ export class PanelsUI {
     }
   }
 
+  cardNow() {
+    return (this.getGame()?.time || 0) * 1000;
+  }
+
+  cardSummary(character) {
+    const game = this.getGame();
+    const companions = character?.id && typeof game?.getCompanionsFor === 'function'
+      ? game.getCompanionsFor(character.id)
+      : (game?.companions || []);
+    return npcCardSummary(character, {
+      companions,
+      reserves: character?.stabledCompanions,
+      inventory: character?.inventory,
+      now: this.cardNow(),
+      cap: typeof game?.activeCompanionCap === 'function'
+        ? game.activeCompanionCap(character)
+        : null
+    });
+  }
+
+  ensureCardSection(id) {
+    let host = $(id);
+    if (host) return host;
+    const card = $('npc-card');
+    if (!card) return null;
+    host = document.createElement('div');
+    host.id = id;
+    host.className = 'npc-card-sections';
+    const actions = card.querySelector('.npc-card-actions');
+    if (actions) card.insertBefore(host, actions);
+    else card.append(host);
+    return host;
+  }
+
+  sectionHeader(title, meta = '') {
+    const head = document.createElement('div');
+    head.className = 'npc-section-head';
+    const label = document.createElement('strong');
+    label.textContent = title;
+    head.append(label);
+    if (meta) {
+      const metaEl = document.createElement('span');
+      metaEl.className = 'npc-section-meta';
+      metaEl.textContent = meta;
+      head.append(metaEl);
+    }
+    return head;
+  }
+
+  sectionNote(text) {
+    const note = document.createElement('p');
+    note.className = 'npc-section-note';
+    note.textContent = text;
+    return note;
+  }
+
+  buddyRow(buddy) {
+    const row = document.createElement('div');
+    row.className = buddy.role === 'reserve' ? 'npc-buddy-row is-reserve' : 'npc-buddy-row';
+    row.setAttribute('role', 'listitem');
+
+    if (buddy.recipe) {
+      const image = document.createElement('img');
+      bindAnimatedAvatar(image, buddy.recipe, 0);
+      image.alt = '';
+      row.append(image);
+    } else {
+      const icon = document.createElement('span');
+      icon.className = 'npc-buddy-icon';
+      icon.textContent = '🐾';
+      icon.setAttribute('aria-hidden', 'true');
+      row.append(icon);
+    }
+
+    const copy = document.createElement('div');
+    copy.className = 'npc-buddy-copy';
+    const name = document.createElement('strong');
+    name.textContent = buddy.name;
+    copy.append(name);
+
+    const effects = Array.isArray(buddy.effectEntries) ? buddy.effectEntries : [];
+    if (effects.length) {
+      const chips = document.createElement('div');
+      chips.className = 'npc-effect-chips';
+      for (const effect of effects) {
+        const chip = document.createElement('span');
+        chip.className = 'effect-chip';
+        chip.title = effect.badge ? `${effect.name} · ${effect.badge}` : effect.name;
+        const icon = document.createElement('span');
+        icon.textContent = effect.icon;
+        icon.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.textContent = effect.name;
+        chip.append(icon, label);
+        chips.append(chip);
+      }
+      copy.append(chips);
+    }
+
+    const state = document.createElement('span');
+    state.className = 'npc-buddy-state';
+    state.textContent = buddy.role === 'reserve' ? 'reserve' : 'active';
+    row.append(copy, state);
+    return row;
+  }
+
+  buildBuddiesSection(summary) {
+    const section = document.createElement('div');
+    section.className = 'npc-card-section';
+    section.append(this.sectionHeader('Buddies', summary.labels.buddies));
+
+    if (!summary.activeBuddies.length && !summary.reserveBuddies.length) {
+      section.append(this.sectionNote('No buddies yet. A win might bring one home.'));
+      return section;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'npc-buddy-list';
+    list.setAttribute('role', 'list');
+    for (const buddy of [...summary.activeBuddies, ...summary.reserveBuddies]) {
+      list.append(this.buddyRow(buddy));
+    }
+    section.append(list);
+    return section;
+  }
+
+  buildBagSection(summary) {
+    const section = document.createElement('div');
+    section.className = 'npc-card-section';
+    const meta = Number.isFinite(summary.counts.coins)
+      ? `${summary.labels.bag} · 🪙 ${summary.counts.coins}`
+      : summary.labels.bag;
+    section.append(this.sectionHeader('Bag', meta));
+
+    if (!summary.bag.count) {
+      section.append(this.sectionNote('Bag is empty.'));
+      return section;
+    }
+
+    if (summary.bag.effects.length) {
+      const chips = document.createElement('div');
+      chips.className = 'npc-effect-chips';
+      for (const effect of summary.bag.effects) {
+        const chip = document.createElement('span');
+        chip.className = 'effect-chip';
+        chip.title = effect.badge ? `${effect.name} · ${effect.badge}` : effect.name;
+        const icon = document.createElement('span');
+        icon.textContent = effect.icon;
+        icon.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.textContent = effect.name;
+        chip.append(icon, label);
+        chips.append(chip);
+      }
+      section.append(chips);
+    }
+
+    if (summary.bag.otherNames.length) {
+      const shown = summary.bag.otherNames.slice(0, 3).join(', ');
+      const extra = summary.bag.otherNames.length > 3
+        ? ` +${summary.bag.otherNames.length - 3} more`
+        : '';
+      section.append(this.sectionNote(`Other items: ${shown}${extra}.`));
+    }
+
+    section.append(this.sectionNote('Neighbours sort their own gear.'));
+    return section;
+  }
+
+  renderCompanionOwner(character, host) {
+    if (!host) return;
+    const section = document.createElement('div');
+    section.className = 'npc-card-section';
+    section.append(this.sectionHeader('Buddy of'));
+    const owner = document.createElement('p');
+    owner.className = 'npc-owner-line';
+    owner.textContent = this.companionOwnerName(character);
+    section.append(owner);
+    host.append(section);
+    host.hidden = false;
+    host.setAttribute('role', 'group');
+    host.setAttribute('aria-label', `${character.name}'s owner`);
+  }
+
+  companionOwnerName(character) {
+    const game = this.getGame();
+    const ownerId = character?.buddyId;
+    if (!ownerId || ownerId === 'player') {
+      return game?.player?.name ? `${game.player.name} (you)` : 'you';
+    }
+    const owner = typeof game?.getNpc === 'function'
+      ? game.getNpc(ownerId)
+      : (game?.npcs || []).find(npc => npc.id === ownerId);
+    return owner?.name || 'a neighbour';
+  }
+
+  renderCardSections(character) {
+    const roster = this.ensureCardSection('npc-roster');
+    const bag = this.ensureCardSection('npc-bag');
+    if (roster) {
+      roster.replaceChildren();
+      roster.hidden = true;
+    }
+    if (bag) {
+      bag.replaceChildren();
+      bag.hidden = true;
+    }
+    if (!character) return;
+
+    if (character.isCompanion) {
+      this.renderCompanionOwner(character, roster);
+      return;
+    }
+    if (!shouldShowNpcRoster(character)) return;
+
+    const summary = this.cardSummary(character);
+    if (roster) {
+      roster.append(this.buildBuddiesSection(summary));
+      roster.hidden = false;
+      roster.setAttribute('role', 'group');
+      roster.setAttribute('aria-label', `${character.name}'s buddies`);
+    }
+    if (bag) {
+      bag.append(this.buildBagSection(summary));
+      bag.hidden = false;
+      bag.setAttribute('role', 'group');
+      bag.setAttribute('aria-label', `${character.name}'s bag`);
+    }
+  }
+
   renderCompanion() {
     const list = $('companion-details');
     if (!list) return;
@@ -702,7 +1128,12 @@ export class PanelsUI {
         copy.append(name, sub, this.makeBuddySlot(stabled));
 
         row.addEventListener('click', () => {
-          if (activeCompanions.length >= 3) {
+          const needsSwap = activeCompanions.length >= 3;
+          if (!needsSwap && (game.companions || []).length >= COMPANION_CAPS.globalActiveMax) {
+            this.notify('The park is at its companion limit. Try again after a buddy rests.');
+            return;
+          }
+          if (needsSwap) {
             // Swap with first active companion, keeping gear and inventory.
             const removed = activeCompanions[0];
             game.companions = game.companions.filter(c => c.id !== removed.id);
@@ -863,6 +1294,32 @@ export class PanelsUI {
     this.renderDebugExtras();
   }
 
+  /**
+   * Debug actions target the last NPC card inspected. Opening a tab clears
+   * `cardCharacter` (existing behaviour), so `lastNpcCharacter` survives it and
+   * is validated against the live roster before use.
+   */
+  npcDebugTarget() {
+    const game = this.getGame();
+    for (const candidate of [this.cardCharacter, this.lastNpcCharacter]) {
+      if (!shouldShowNpcRoster(candidate)) continue;
+      if (!game) return candidate;
+      const live = typeof game.getNpc === 'function' ? game.getNpc(candidate.id) : null;
+      if (live && shouldShowNpcRoster(live)) {
+        if (live !== candidate) this.lastNpcCharacter = live;
+        return live;
+      }
+      if (Array.isArray(game.npcs) && game.npcs.includes(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  runNpcDebugAction(handler) {
+    if (typeof handler !== 'function') return;
+    handler(this.npcDebugTarget());
+    this.updateDebugUI();
+  }
+
   renderDebugExtras() {
     const list = $('debug-actions');
     if (!list) return;
@@ -916,6 +1373,62 @@ export class PanelsUI {
       onClick: () => this.onTriggerNpcGame?.()
     });
 
+    const npc = this.npcDebugTarget();
+    const npcSummary = npc ? this.cardSummary(npc) : null;
+    addRow({
+      id: 'debug-npc-target',
+      icon: npc ? '🧑‍🌾' : '❔',
+      title: npc ? `Card target: ${npc.name}` : 'No neighbour selected',
+      detail: npc
+        ? `${npcSummary.labels.buddies} · ${npcSummary.labels.bag}`
+        : 'Open a neighbour card, then come back to debug'
+    });
+
+    const npcAction = ({ id, icon, title, detail, handler }) => {
+      const wired = typeof handler === 'function';
+      addRow({
+        id,
+        icon,
+        title,
+        detail: wired
+          ? (npc ? detail(npcSummary) : 'No neighbour picked — the tool will ask for one')
+          : 'Waiting for runtime wiring',
+        onClick: wired ? () => this.runNpcDebugAction(handler) : null
+      });
+    };
+
+    npcAction({
+      id: 'debug-npc-grant-item',
+      icon: '🎁',
+      title: 'Grant NPC ability item',
+      detail: summary => `Adds a random effect item to ${npc.name}'s bag (${summary.labels.bag})`,
+      handler: this.onGrantNpcEffect
+    });
+
+    npcAction({
+      id: 'debug-npc-grant-buddy',
+      icon: '🐾',
+      title: 'Grant NPC buddy',
+      detail: () => 'Adds a buddy within the NPC caps',
+      handler: this.onGrantNpcBuddy
+    });
+
+    npcAction({
+      id: 'debug-npc-simulate-win',
+      icon: '🏆',
+      title: 'Simulate NPC win',
+      detail: () => 'Rewards them, auto-equips, and saves',
+      handler: this.onSimulateNpcWin
+    });
+
+    npcAction({
+      id: 'debug-npc-auto-equip',
+      icon: '🛠️',
+      title: 'Auto-equip NPC gear',
+      detail: () => 'Wears bag gear where it fits',
+      handler: this.onAutoEquipNpc
+    });
+
     const hostState = this.getHostState?.() || null;
     const hostDetail = hostState?.active
       ? `${hostState.title || hostState.gameId} · ${hostState.phase || 'open'}${hostState.settled ? ' · settled' : ''}`
@@ -936,6 +1449,15 @@ export class PanelsUI {
       icon: '🧠',
       title: 'Behavior summary',
       detail: behaviorDetail
+    });
+
+    const game = this.getGame();
+    const economy = npcEconomySummary(game?.npcs, game?.companions);
+    addRow({
+      id: 'debug-npc-economy',
+      icon: '📊',
+      title: 'NPC economy',
+      detail: `${economy.label} · 🪙 ${economy.coins}`
     });
 
     list.append(fragment);
@@ -971,7 +1493,9 @@ export class PanelsUI {
 
     $('npc-shuffle').hidden = isPlayer || isCompanion;
     $('npc-remove').hidden = isPlayer || isCompanion;
+    if (shouldShowNpcRoster(character)) this.lastNpcCharacter = character;
     this.renderCardEffects(character);
+    this.renderCardSections(character);
     $('npc-card').hidden = false;
   }
 

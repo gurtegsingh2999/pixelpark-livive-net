@@ -337,7 +337,7 @@ body.wizard-open canvas#world {
   filter: drop-shadow(0 10px 10px rgba(0, 0, 0, 0.35));
 }
 
-.npc-card strong {
+.npc-card > strong {
   display: block;
   padding-right: 26px;
   font-size: 15px;
@@ -1490,6 +1490,155 @@ body.dialogue-open .topbar {
 
 .debug-row.debug-readonly:hover {
   border-color: var(--line);
+}
+
+.debug-row small {
+  overflow: visible;
+  white-space: normal;
+}
+
+/* --- NPC card buddies, bag, and owner line --- */
+
+.npc-card {
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.npc-card-sections {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.npc-card-section {
+  display: grid;
+  gap: 5px;
+}
+
+.npc-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.npc-card .npc-section-head strong {
+  display: inline;
+  padding-right: 0;
+  color: var(--accent-strong);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.npc-section-meta {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npc-buddy-list {
+  display: grid;
+  gap: 4px;
+  max-height: 172px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.npc-buddy-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid rgba(163, 210, 139, 0.12);
+  border-radius: 8px;
+  background: rgba(25, 39, 29, 0.55);
+}
+
+.npc-buddy-row.is-reserve {
+  border-style: dashed;
+  opacity: 0.74;
+}
+
+.npc-buddy-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: radial-gradient(circle at 50% 68%, rgba(182, 227, 124, 0.16), transparent 65%);
+  font-size: 12px;
+}
+
+.npc-buddy-row img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: radial-gradient(circle at 50% 68%, rgba(182, 227, 124, 0.14), transparent 65%);
+}
+
+.npc-buddy-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.npc-card .npc-buddy-copy strong {
+  display: block;
+  overflow: hidden;
+  padding-right: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npc-buddy-state {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.npc-effect-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.npc-effect-chips .effect-chip {
+  padding: 2px 6px;
+  font-size: 9.5px;
+}
+
+.npc-section-note,
+.npc-owner-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.npc-owner-line {
+  padding: 4px 6px;
+  border: 1px solid rgba(163, 210, 139, 0.12);
+  border-radius: 8px;
+  background: rgba(25, 39, 29, 0.55);
+  color: var(--text);
+  font-size: 11px;
+}
+
+@media (max-width: 520px) {
+  .npc-card {
+    max-height: calc(100vh - 84px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

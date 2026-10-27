@@ -45,6 +45,41 @@
       "rewardCoins": 2
     }
   },
+  "npcMiniGames": {
+    "tic-tac-toe": {
+      "win": {
+        "coins": 2,
+        "itemChance": 0.7,
+        "itemPool": "npc_effect_pool",
+        "companionChance": 0.8,
+        "bonusRollChance": 0.35,
+        "bonusLootTable": "npc_ttt_bonus"
+      },
+      "draw": {
+        "coins": 1
+      },
+      "loss": {}
+    }
+  },
+  "npcLootTables": {
+    "npc_effect_pool": [
+      "big-o-bracelet",
+      "chamo-clip",
+      "hover-halo",
+      "prism-pin",
+      "echo-bell",
+      "bouncy-boots",
+      "buddy-cape",
+      "glowworm-jar",
+      "lucky-clover",
+      "teleport-tricorder"
+    ],
+    "npc_ttt_bonus": [
+      { "type": "coins", "weight": 3, "amount": 2 },
+      { "type": "item", "weight": 2, "pool": ["lucky-clover", "hover-halo", "prism-pin"] },
+      { "type": "companion", "weight": 1 }
+    ]
+  },
   "lootTables": {
     "ttt_win_loot": [
       { "type": "companion", "weight": 10 }

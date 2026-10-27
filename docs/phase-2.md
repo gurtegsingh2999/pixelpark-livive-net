@@ -336,3 +336,34 @@ Remaining product questions (deferred):
 Proceed with **Phase 2A: NPC ownership and economy** first.
 
 It converts existing NPC-vs-NPC games into the dynamic system you described with no new gameplay concepts, and it makes every future mini-game instantly more interesting. Once NPC rewards, multi-buddy rosters, auto-loadout, and the NPC card are stable, add new games and NPC checkers/chess on top.
+
+---
+
+## 11. Implementation status (Phase 2A)
+
+**Delivered**
+
+- Owner-parameterized rewards with separate `npcMiniGames` / `npcLootTables`.
+- NPC game result callback (`winnerId`, `loserId`, outcome) with no player settlement leakage.
+- NPC active cap 2, reserve cap 6, global active cap 80.
+- NPC coins and reserve companions persisted in save v2.
+- `src/npc/loadout.js` auto-equip planner with effect `ai` priority/target metadata.
+- Runtime loop: NPC win/draw → reward → auto-equip → behavior sync → save → nearby toast.
+- NPC card shows buddies (active/reserve), worn effects, bag, coins; debug actions grant items/buddies, simulate wins, and auto-equip.
+- Tests: **289/289 passing**, including NPC economy, roster, loadout, runtime, UI helpers, data validation, and acceptance.
+
+**Fixed during QA**
+
+- Reserve activation could exceed the global 80-companion cap — now refused with `reason: 'global-cap'`.
+- Player reserve activation now checks the same global cap before adding a follower.
+
+**Known gaps / deferred**
+
+- NPC-vs-NPC checkers/chess.
+- New mini-games (Memory Grid, Race, Timing).
+- Reserve activation UI for NPC buddies (debug/card only for now).
+- Player-managed NPC gear (read-only card by design).
+- NPC reward log / history.
+- NPC coins have no shop or spend sink yet.
+- Performance test at the 80-active-companion ceiling in a real browser.
+

@@ -13,5 +13,11 @@
   "crowd": {
     "defaultCount": 10,
     "maxNpcs": 40
+  },
+  "companions": {
+    "playerActiveMax": 3,
+    "npcActiveMax": 2,
+    "npcReserveMax": 6,
+    "globalActiveMax": 80
   }
 }

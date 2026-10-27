@@ -306,6 +306,115 @@ test('future save versions are rejected gracefully', () => {
   });
 });
 
+test('NPC coins and reserve companions round-trip with gear', () => {
+  const game = baseGame({
+    npcs: [
+      {
+        id: 'npc-1',
+        name: 'Fern',
+        recipe: { seed: 'fern', look: {} },
+        vibe: 'Curious',
+        x: 14,
+        y: 15,
+        direction: 0,
+        coins: 23,
+        inventory: [{ id: 'checkers' }],
+        equipped: [{ slot: 'hand', uid: 'checkers-0' }],
+        stabledCompanions: [
+          {
+            id: 'npc-reserve-1',
+            name: 'Moss',
+            buddyId: 'npc-1',
+            recipe: { style: 'dog' },
+            coins: 4,
+            inventory: [{ id: 'lucky-clover' }],
+            equipped: [{ slot: 'charm', uid: 'lucky-clover-0' }]
+          }
+        ]
+      }
+    ],
+    companions: [
+      {
+        id: 'npc-comp-1',
+        name: 'Pip',
+        buddyId: 'npc-1',
+        recipe: { style: 'dog' },
+        x: 15,
+        y: 15,
+        direction: 0,
+        inventory: [{ id: 'buddy-cape' }],
+        equipped: [{ slot: 'buddy', uid: 'buddy-cape-0' }]
+      }
+    ]
+  });
+
+  const save = serializeSave(game, {}, new Set(['npc-1']));
+  assert.equal(save.version, 2);
+  assert.equal(save.npcs[0].coins, 23);
+  assert.equal(save.npcs[0].stabledCompanions.length, 1);
+  assert.equal(save.npcs[0].stabledCompanions[0].id, 'npc-reserve-1');
+  assert.equal(save.npcs[0].stabledCompanions[0].buddyId, 'npc-1');
+  assert.equal(save.npcs[0].stabledCompanions[0].coins, 4);
+  assert.equal(save.npcs[0].stabledCompanions[0].inventory[0].uid, 'lucky-clover-0');
+  assert.deepEqual(save.npcs[0].stabledCompanions[0].equipped, [
+    { slot: 'charm', uid: 'lucky-clover-0' }
+  ]);
+  assert.equal(save.companions[0].buddyId, 'npc-1');
+  assert.equal(save.companions[0].equipped[0].uid, 'buddy-cape-0');
+
+  const loaded = migrateSave(JSON.parse(JSON.stringify(save)));
+  assert.equal(loaded.npcs[0].coins, 23);
+  assert.equal(loaded.npcs[0].stabledCompanions[0].buddyId, 'npc-1');
+  assert.deepEqual(
+    loaded.npcs[0].stabledCompanions[0].equipped,
+    save.npcs[0].stabledCompanions[0].equipped
+  );
+  assert.equal(loaded.npcs[0].stabledCompanions[0].inventory[0].uid, 'lucky-clover-0');
+  assert.equal(loaded.companions[0].buddyId, 'npc-1');
+  assert.deepEqual(loaded.companions[0].equipped, save.companions[0].equipped);
+  assert.equal('path' in loaded.npcs[0].stabledCompanions[0], false);
+});
+
+test('v2 saves without NPC coins or reserve load with defaults', () => {
+  const legacyV2 = {
+    version: 2,
+    worldSeed: 'legacy-v2',
+    terrain: encodeTerrain(grassTerrain()),
+    playerName: 'Tester',
+    playerRecipe: { seed: 'p', look: {} },
+    player: { x: 4, y: 5, direction: 0, inventory: [], equipped: [], coins: 0, stabledCompanions: [] },
+    npcs: [
+      {
+        id: 'npc-old',
+        name: 'Old Pip',
+        recipe: { seed: 'n', look: {} },
+        x: 8,
+        y: 9,
+        direction: 1,
+        inventory: [{ id: 'checkers' }]
+      }
+    ],
+    companions: [
+      { id: 'comp-old', name: 'Rusty', buddyId: 'npc-old', recipe: { style: 'dog' }, x: 9, y: 9, direction: 0 }
+    ],
+    friends: ['npc-old'],
+    wander: true
+  };
+
+  const migrated = migrateSave(legacyV2);
+  assert.equal(migrated.npcs[0].coins, 0);
+  assert.deepEqual(migrated.npcs[0].stabledCompanions, []);
+  assert.equal(migrated.npcs[0].inventory[0].uid, 'checkers-0');
+
+  withLocalStorage(store => {
+    store.setItem(STORAGE_KEY, JSON.stringify(legacyV2));
+    const loaded = loadSave();
+    assert.equal(loaded.npcs[0].coins, 0);
+    assert.deepEqual(loaded.npcs[0].stabledCompanions, []);
+    assert.equal(loaded.companions[0].buddyId, 'npc-old');
+  });
+});
+
 test('loadSave migrates a stored v1 save to v2', () => {
   withLocalStorage(store => {
     store.setItem(STORAGE_KEY, JSON.stringify({

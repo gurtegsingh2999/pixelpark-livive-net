@@ -45,6 +45,140 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+// Companion roster caps live in data/engine_config.json. Read the block
+// defensively so an older config (or a partially rolled-out one) still runs;
+// the fallbacks mirror the locked Phase 2 defaults.
+const COMPANION_CAP_FALLBACKS = Object.freeze({
+  playerActiveMax: 3,
+  npcActiveMax: 2,
+  npcReserveMax: 6,
+  globalActiveMax: 80
+});
+
+function capValue(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+}
+
+export const COMPANION_CAPS = Object.freeze({
+  playerActiveMax: capValue(
+    engineConfig.companions?.playerActiveMax,
+    COMPANION_CAP_FALLBACKS.playerActiveMax
+  ),
+  npcActiveMax: capValue(
+    engineConfig.companions?.npcActiveMax,
+    COMPANION_CAP_FALLBACKS.npcActiveMax
+  ),
+  npcReserveMax: capValue(
+    engineConfig.companions?.npcReserveMax,
+    COMPANION_CAP_FALLBACKS.npcReserveMax
+  ),
+  globalActiveMax: capValue(
+    engineConfig.companions?.globalActiveMax,
+    COMPANION_CAP_FALLBACKS.globalActiveMax
+  )
+});
+
+export function isPlayerOwner(owner) {
+  return Boolean(owner && (owner.isPlayer === true || owner.id === 'player'));
+}
+
+/** Active follower cap for any owner: the player or an NPC. */
+export function activeCompanionCap(owner) {
+  return isPlayerOwner(owner)
+    ? COMPANION_CAPS.playerActiveMax
+    : COMPANION_CAPS.npcActiveMax;
+}
+
+/** Reserve collection for an owner; never mutates and always returns an array. */
+export function getReserveCompanions(owner) {
+  return Array.isArray(owner?.stabledCompanions) ? owner.stabledCompanions : [];
+}
+
+/** Count active companions in a flat companion list that follow `ownerId`. */
+export function countActiveCompanions(companions, ownerId) {
+  if (!Array.isArray(companions) || !ownerId) return 0;
+  return companions.filter(comp => comp && comp.buddyId === ownerId).length;
+}
+
+/**
+ * Roster summary for an owner. Pass the flat `game.companions` list as the
+ * second argument (the Game method does this automatically); when omitted,
+ * `owner.activeCompanions` is used if an owner keeps a derived list.
+ */
+export function companionCounts(owner, companions = null) {
+  const active = Array.isArray(companions)
+    ? countActiveCompanions(companions, owner?.id)
+    : (Array.isArray(owner?.activeCompanions) ? owner.activeCompanions.length : 0);
+  return {
+    active,
+    reserve: getReserveCompanions(owner).length,
+    cap: activeCompanionCap(owner)
+  };
+}
+
+/**
+ * Create an active companion for any owner via the existing `makeCompanion`
+ * factory and append it to `game.companions`. Does not enforce caps; reward
+ * and roster policy decide whether a new buddy is active or reserve.
+ */
+export function addActiveCompanion(game, owner, companionData = {}) {
+  if (!game || !owner || typeof game.makeCompanion !== 'function') return null;
+  const companion = game.makeCompanion(companionData || {}, owner);
+  if (!Array.isArray(game.companions)) game.companions = [];
+  game.companions.push(companion);
+  return companion;
+}
+
+/**
+ * Add an unrendered reserve companion to `owner.stabledCompanions`, filling in
+ * the ownership defaults. Recruitment stays policy-free: callers decide whether
+ * to reserve or activate a companion.
+ */
+export function reserveCompanion(owner, companionData = {}) {
+  if (!owner) return null;
+  if (!Array.isArray(owner.stabledCompanions)) owner.stabledCompanions = [];
+  const source = companionData && typeof companionData === 'object' ? companionData : {};
+  const reserved = {
+    ...source,
+    id: source.id || `comp-${Math.random().toString(36).slice(2, 9)}`,
+    name: source.name || 'Buddy',
+    buddyId: owner.id || source.buddyId || 'player',
+    inventory: Array.isArray(source.inventory) ? source.inventory : [],
+    equipped: Array.isArray(source.equipped) ? source.equipped : [],
+    coins: Number.isFinite(source.coins) ? source.coins : 0,
+    stabledCompanions: Array.isArray(source.stabledCompanions) ? source.stabledCompanions : []
+  };
+  owner.stabledCompanions.push(reserved);
+  return reserved;
+}
+
+/**
+ * Move a reserve companion back into the active roster when the owner is under
+ * its active cap. Returns `{ ok, companion, reason }`; failures leave the
+ * reserve collection untouched.
+ */
+export function activateReserveCompanion(game, owner, id) {
+  const reserve = getReserveCompanions(owner);
+  const index = typeof id === 'string' && id
+    ? reserve.findIndex(comp => comp && comp.id === id)
+    : -1;
+  if (index < 0) return { ok: false, companion: null, reason: 'not-found' };
+  if (!game || typeof game.makeCompanion !== 'function') {
+    return { ok: false, companion: null, reason: 'unavailable' };
+  }
+  if (companionCounts(owner, game.companions).active >= activeCompanionCap(owner)) {
+    return { ok: false, companion: null, reason: 'at-cap' };
+  }
+  if ((game.companions || []).length >= COMPANION_CAPS.globalActiveMax) {
+    return { ok: false, companion: null, reason: 'global-cap' };
+  }
+
+  const [data] = reserve.splice(index, 1);
+  const companion = addActiveCompanion(game, owner, data);
+  return { ok: true, companion, reason: null };
+}
+
 /**
  * Clamp an animation-frame delta to a safe, non-negative simulation step.
  * The first rAF timestamp can precede the performance.now() captured in
@@ -236,6 +370,36 @@ export class Game {
 
   getCompanionsFor(buddyId) {
     return this.companions.filter(comp => comp.buddyId === buddyId);
+  }
+
+  // Companion roster helpers. The pure functions above are the shared
+  // implementation; these methods bind the current game's companion list.
+  getReserveCompanions(owner) {
+    return getReserveCompanions(owner);
+  }
+
+  activeCompanionCap(owner) {
+    return activeCompanionCap(owner);
+  }
+
+  companionCounts(owner) {
+    return companionCounts(owner, this.companions);
+  }
+
+  addActiveCompanion(owner, companionData) {
+    return addActiveCompanion(this, owner, companionData);
+  }
+
+  reserveCompanion(owner, companionData) {
+    return reserveCompanion(owner, companionData);
+  }
+
+  activateReserveCompanion(owner, id) {
+    return activateReserveCompanion(this, owner, id);
+  }
+
+  globalCompanionCount() {
+    return Array.isArray(this.companions) ? this.companions.length : 0;
   }
 
   setWorld({ terrain, worldSeed, player, npcs, companions = [], scenery = [], wander = true }) {

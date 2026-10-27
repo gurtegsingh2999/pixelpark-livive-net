@@ -11,7 +11,10 @@
  * Tic-Tac-Toe session with two AI seats, passes NPC suppression options, and
  * additionally fences off player settlement hooks for the session's lifetime so
  * a migrated game cannot accidentally record stats, roll loot, or open an end
- * dialogue. `awaitNpcGame` polls host state; it never uses timers.
+ * dialogue. When the NPC board finishes, the adapter reports the board winner
+ * and loser through `onResult` so an NPC economy can reward the winner without
+ * touching player settlement. `awaitNpcGame` polls host state; it never uses
+ * timers.
  *
  * Every helper is dependency-injected and DOM-free, so tests can use a fake
  * host and fake bubbles.
@@ -125,6 +128,17 @@ function chooseTttIndex(grid) {
 }
 
 /**
+ * Record the driver's final board state on the adapter record. Outcomes stay
+ * relative to seat 0 (X) so `win`/`loss` match `driveNpcTtt`'s `npc.outcome`.
+ */
+function markDriverResult(record, characters, winner) {
+  const winnerSeat = winner === 'X' ? 0 : (winner === 'O' ? 1 : null);
+  record.outcome = winner === 'draw' ? 'draw' : (winnerSeat === 0 ? 'win' : 'loss');
+  record.winnerId = winnerSeat === null ? null : (characters[winnerSeat]?.id ?? null);
+  record.loserId = winnerSeat === null ? null : (characters[winnerSeat === 0 ? 1 : 0]?.id ?? null);
+}
+
+/**
  * Drive a two-NPC Tic-Tac-Toe session using the legacy board for rendering and
  * winner detection. Both seats walk to their sideline, take turns stepping onto
  * an empty cell, walk back, and finish the host session without player rewards.
@@ -187,6 +201,7 @@ function driveNpcTtt(record) {
         : (winner === 'X' ? 'win' : 'loss');
       npc.done = true;
       npc.phase = 'done';
+      markDriverResult(record, characters, winner);
       return npc;
     }
 
@@ -213,6 +228,7 @@ function driveNpcTtt(record) {
       npc.outcome = 'draw';
       npc.done = true;
       npc.phase = 'done';
+      markDriverResult(record, characters, 'draw');
       return npc;
     }
     const mover = characters[npc.turn];
@@ -237,11 +253,13 @@ function driveNpcTtt(record) {
  * @param {object|null} [options.host] A1 MiniGameHost (or a compatible fake).
  * @param {string[]} [options.allowedGames] Must stay within `NPC_GAME_IDS`.
  * @param {(request:object)=>object} [options.onSessionClosed] debug hook
+ * @param {(result:object)=>void} [options.onResult] NPC winner/loser callback
  */
 export function createNpcGameAdapter({
   host = null,
   allowedGames = NPC_GAME_IDS,
-  onSessionClosed = null
+  onSessionClosed = null,
+  onResult = null
 } = {}) {
   const permitted = NPC_GAME_IDS.filter(id => !Array.isArray(allowedGames) || allowedGames.includes(id));
   const sessions = new Map();
@@ -341,6 +359,9 @@ export function createNpcGameAdapter({
       closed: false,
       npcTtt: null,
       outcome: null,
+      winnerId: null,
+      loserId: null,
+      resultEmitted: false,
       restoreHooks: suppressPlayerHooks(host)
     };
     sessions.set(token, record);
@@ -364,8 +385,9 @@ export function createNpcGameAdapter({
     if (!record) return { known: false, active: false, reason: 'unknown-session' };
 
     const npc = driveNpcTtt(record);
+    if (npc?.done) emitResult(record);
     if (npc?.done && !record.closed) {
-      record.outcome = npc.outcome || 'complete';
+      record.outcome = npc.outcome || record.outcome || 'complete';
       finish(record.token, {
         reason: 'npc-game-complete',
         outcome: record.outcome
@@ -399,6 +421,8 @@ export function createNpcGameAdapter({
       foreign: foreignSession,
       phase: state?.phase ?? null,
       outcome: record.outcome ?? state?.outcome ?? record.session?.settlement?.outcome ?? null,
+      winnerId: record.winnerId ?? null,
+      loserId: record.loserId ?? null,
       settled: state?.settled ?? null,
       closed: record.closed
     };
@@ -411,6 +435,7 @@ export function createNpcGameAdapter({
   function finish(token, { reason = 'npc-game-complete', outcome = null } = {}) {
     const record = sessions.get(String(token));
     if (!record) return { ok: false, reason: 'unknown-session' };
+    emitResult(record);
     release(record);
 
     const state = readState(host);
@@ -493,6 +518,26 @@ export function createNpcGameAdapter({
     release(record);
   }
 
+  function emitResult(record) {
+    if (!record || record.resultEmitted || record.outcome == null) return;
+    record.resultEmitted = true;
+    if (typeof onResult !== 'function') return;
+    const payload = {
+      token: record.token,
+      sessionId: record.sessionId,
+      game: record.game,
+      winnerId: record.winnerId ?? null,
+      loserId: record.loserId ?? null,
+      outcome: record.outcome,
+      session: record.session
+    };
+    try {
+      onResult(payload);
+    } catch {
+      // Result hooks never break gameplay.
+    }
+  }
+
   function notifyClosed(record, result) {
     if (typeof onSessionClosed !== 'function') return;
     try {
@@ -528,6 +573,7 @@ export function createNpcGameAdapter({
  * @param {object|null} [deps.host] A1 MiniGameHost (or fake)
  * @param {object|null} [deps.adapter] pre-built adapter
  * @param {string[]} [deps.allowedGames]
+ * @param {(result:object)=>void} [deps.onResult] NPC winner/loser callback
  * @param {(request:object)=>string} [deps.lineFor] copy resolver
  * @param {(emote:string, detail:object)=>string} [deps.emoteFor]
  */
@@ -536,10 +582,11 @@ export function createSocialActions({
   host = null,
   adapter = null,
   allowedGames = NPC_GAME_IDS,
+  onResult = null,
   lineFor = null,
   emoteFor = null
 } = {}) {
-  const npcGames = adapter || createNpcGameAdapter({ host, allowedGames });
+  const npcGames = adapter || createNpcGameAdapter({ host, allowedGames, onResult });
 
   function speak(ctx) {
     const { actor, params = {}, stateMemory = {} } = ctx;
@@ -692,6 +739,8 @@ export function createSocialActions({
       partnerId: ctx.target?.id ?? null,
       game: memory.npcGameId || params.game || null,
       outcome: stateMemory.gameOutcome,
+      winnerId: status.winnerId ?? null,
+      loserId: status.loserId ?? null,
       token,
       npc: true
     });

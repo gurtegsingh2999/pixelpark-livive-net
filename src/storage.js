@@ -172,6 +172,17 @@ function serializeCharacterGear(record) {
   };
 }
 
+/** Persist reserve companions with their gear, dropping live frame state. */
+function serializeReserveCompanions(companions) {
+  if (!Array.isArray(companions)) return [];
+  return companions
+    .filter(isObject)
+    .map(comp => ({
+      ...stripTransient(comp),
+      ...serializeCharacterGear(comp)
+    }));
+}
+
 /**
  * Build a v2 save. `behaviorState` is optional and may be a plain object or a
  * BehaviorRuntime; live FSM entries, paths, staging, and host sessions are
@@ -180,12 +191,7 @@ function serializeCharacterGear(record) {
 export function serializeSave(game, draft, friends, behaviorState = null) {
   if (!game?.terrain || !game.player || !draft) return null;
   const playerGear = serializeCharacterGear(game.player);
-  const stabledCompanions = Array.isArray(game.player.stabledCompanions)
-    ? game.player.stabledCompanions.filter(isObject).map(comp => ({
-      ...stripTransient(comp),
-      ...serializeCharacterGear(comp)
-    }))
-    : [];
+  const stabledCompanions = serializeReserveCompanions(game.player.stabledCompanions);
 
   return {
     version: SAVE_VERSION,
@@ -211,7 +217,9 @@ export function serializeSave(game, draft, friends, behaviorState = null) {
       x: npc.x,
       y: npc.y,
       direction: npc.direction,
-      ...serializeCharacterGear(npc)
+      ...serializeCharacterGear(npc),
+      coins: Number.isFinite(npc.coins) ? npc.coins : 0,
+      stabledCompanions: serializeReserveCompanions(npc.stabledCompanions)
     })),
     companions: (game.companions || []).map(comp => ({
       id: comp.id,
@@ -235,6 +243,22 @@ function migrateCharacterRecord(record) {
   const gear = serializeCharacterGear(record);
   next.inventory = gear.inventory;
   next.equipped = gear.equipped;
+  return next;
+}
+
+/**
+ * NPCs gain ownership fields in Phase 2. Old v2 saves (and v1 migrations)
+ * default to zero coins and an empty reserve without bumping the version.
+ */
+function migrateNpcRecord(record) {
+  const next = migrateCharacterRecord(record);
+  if (!isObject(next)) return next;
+  next.coins = Number.isFinite(next.coins) ? next.coins : 0;
+  next.stabledCompanions = Array.isArray(next.stabledCompanions)
+    ? next.stabledCompanions
+      .filter(isObject)
+      .map(comp => migrateCharacterRecord(stripTransient(comp)))
+    : [];
   return next;
 }
 
@@ -269,7 +293,7 @@ export function migrateSave(state) {
   }
 
   next.npcs = Array.isArray(state.npcs)
-    ? state.npcs.filter(isObject).map(migrateCharacterRecord)
+    ? state.npcs.filter(isObject).map(migrateNpcRecord)
     : [];
   next.companions = Array.isArray(state.companions)
     ? state.companions.filter(isObject).map(comp => migrateCharacterRecord(stripTransient(comp)))

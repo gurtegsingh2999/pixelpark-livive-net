@@ -110,6 +110,114 @@ function createFakeHost({ failStart = null, busy = false, autoClose = false } = 
   return { host, calls, state: () => state, session: () => session };
 }
 
+/**
+ * Fake host with a real legacy TTT board so the NPC driver can be advanced one
+ * status() poll at a time. Characters stage instantly (no terrain path).
+ */
+function createTttHost({ grid = Array(9).fill(null) } = {}) {
+  const calls = {
+    start: [],
+    close: [],
+    recordGameResult: 0,
+    rollReward: 0,
+    applyReward: 0,
+    onGameEnd: 0,
+    toasts: [],
+    cheers: 0
+  };
+  const hooks = {
+    recordGameResult() { calls.recordGameResult += 1; },
+    rollReward() { calls.rollReward += 1; return { id: 'loot' }; },
+    applyReward() { calls.applyReward += 1; return ['loot']; },
+    onGameEnd() { calls.onGameEnd += 1; },
+    onToast(message) { calls.toasts.push(message); },
+    onCheer() { calls.cheers += 1; },
+    onEvent() {}
+  };
+
+  const lines = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
+
+  let session = null;
+  let closed = false;
+  let outcome = null;
+
+  const legacy = {
+    game: { terrain: null },
+    activeBoard: {
+      originX: 10,
+      originY: 10,
+      sidelineX: 13,
+      sidelineY: 11,
+      grid: [...grid],
+      winner: null,
+      status: 'playing',
+      npcSeatTargets: [{ x: 9, y: 11 }, { x: 13, y: 11 }]
+    },
+    checkWinner() {
+      const cells = legacy.activeBoard.grid;
+      for (const [a, b, c] of lines) {
+        if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) return cells[a];
+      }
+      return cells.every(cell => cell !== null) ? 'draw' : null;
+    }
+  };
+
+  const host = {
+    hooks,
+    get session() { return session; },
+    isOpen: () => Boolean(session),
+    get activeGameId() { return session ? 'tic-tac-toe' : null; },
+    start(gameId, options = {}) {
+      calls.start.push({ gameId, ...options });
+      const seats = (options.seats || []).map((seat, index) => ({ ...seat, index }));
+      session = {
+        id: 'npc-ttt-1',
+        meta: { id: gameId, title: 'Tic-Tac-Toe' },
+        game: { legacy },
+        seats,
+        participants: seats.map(seat => seat.character),
+        settled: false
+      };
+      closed = false;
+      return { ok: true, gameId, session, meta: session.meta, phase: 'playing' };
+    },
+    getState() {
+      return {
+        active: Boolean(session),
+        gameId: session ? 'tic-tac-toe' : null,
+        phase: closed ? 'closed' : 'playing',
+        settled: closed,
+        outcome
+      };
+    },
+    close(options = {}) {
+      calls.close.push({ ...options });
+      closed = true;
+      outcome = options.outcome ?? null;
+      session = null;
+      return { ok: true, gameId: 'tic-tac-toe', reason: options.reason, settlement: null };
+    },
+    getMeta(gameId) {
+      return { id: gameId, title: 'Tic-Tac-Toe' };
+    }
+  };
+
+  return { host, calls, legacy };
+}
+
+function advanceNpcGame(adapter, token, steps = 20) {
+  let status = null;
+  for (let i = 0; i < steps; i++) {
+    status = adapter.status(token);
+    if (status.closed || status.active === false) return status;
+  }
+  return status;
+}
+
 test('exports the five social verbs for runtime extraActions', () => {
   assert.deepEqual([...SOCIAL_ACTION_NAMES], [
     'speak',
@@ -402,4 +510,190 @@ test('bridge can be used as a plain handler without a runtime', () => {
   assert.equal(bubbles.activeFor('npc-a').text, 'direct');
   assert.equal(bridge.detach(), undefined);
   assert.equal(bridge.handle(null), null);
+});
+
+test('NPC TTT reports an X winner through onResult exactly once', () => {
+  const { host, calls } = createTttHost({
+    // X (seat 0) has two in a row; index 2 is the only empty cell.
+    grid: ['X', 'X', null, 'O', 'O', 'X', 'X', 'O', 'O']
+  });
+  const results = [];
+  const adapter = createNpcGameAdapter({ host, onResult: result => results.push(result) });
+  const { ctx } = makeCtx();
+
+  const started = adapter.start({
+    game: 'tic-tac-toe',
+    actor: ctx.actor,
+    partner: ctx.target
+  });
+  assert.equal(started.ok, true);
+
+  const status = advanceNpcGame(adapter, started.token);
+  assert.equal(status.closed, true);
+
+  assert.equal(results.length, 1, 'onResult fires once');
+  const result = results[0];
+  assert.equal(result.token, started.token);
+  assert.equal(result.sessionId, started.token);
+  assert.equal(result.game, 'tic-tac-toe');
+  assert.equal(result.winnerId, 'npc-a');
+  assert.equal(result.loserId, 'npc-b');
+  assert.equal(result.outcome, 'win');
+  assert.equal(result.session, started.session);
+
+  assert.equal(status.outcome, 'win');
+  assert.equal(status.winnerId, 'npc-a');
+  assert.equal(status.loserId, 'npc-b');
+
+  // Repeat polling/finishing must not re-emit.
+  adapter.status(started.token);
+  adapter.finish(started.token);
+  assert.equal(results.length, 1, 'resultEmitted guards duplicate callbacks');
+
+  assert.equal(calls.recordGameResult, 0);
+  assert.equal(calls.rollReward, 0);
+  assert.equal(calls.applyReward, 0);
+  assert.equal(calls.onGameEnd, 0);
+  assert.equal(calls.close.length, 1);
+  assert.equal(calls.close[0].settle, false);
+  assert.equal(calls.close[0].record, false);
+  assert.equal(calls.close[0].reward, false);
+  assert.equal(typeof host.hooks.recordGameResult, 'function', 'hooks restored');
+});
+
+test('NPC TTT reports an O winner as a seat-0 loss', () => {
+  const { host } = createTttHost({
+    // Empties are 4 and 6. X is forced to 4, then O wins the 0/3/6 column.
+    grid: ['O', 'X', 'O', 'O', null, 'X', null, 'O', 'X']
+  });
+  const results = [];
+  const adapter = createNpcGameAdapter({ host, onResult: result => results.push(result) });
+  const { ctx } = makeCtx();
+
+  const started = adapter.start({
+    game: 'tic-tac-toe',
+    actor: ctx.actor,
+    partner: ctx.target
+  });
+  assert.equal(started.ok, true);
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.9; // chooseTttIndex prefers centre cell 4
+  let status;
+  try {
+    status = advanceNpcGame(adapter, started.token);
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.equal(status.closed, true);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].winnerId, 'npc-b');
+  assert.equal(results[0].loserId, 'npc-a');
+  assert.equal(results[0].outcome, 'loss');
+  assert.equal(status.outcome, 'loss');
+  assert.equal(status.winnerId, 'npc-b');
+  assert.equal(status.loserId, 'npc-a');
+});
+
+test('NPC TTT draw reports null winner and loser', () => {
+  const { host } = createTttHost({
+    // Only index 8 is empty; filling it completes the board without a line.
+    grid: ['X', 'O', 'X', 'X', 'O', 'O', 'O', 'X', null]
+  });
+  const results = [];
+  const adapter = createNpcGameAdapter({ host, onResult: result => results.push(result) });
+  const { ctx } = makeCtx();
+
+  const started = adapter.start({
+    game: 'tic-tac-toe',
+    actor: ctx.actor,
+    partner: ctx.target
+  });
+  assert.equal(started.ok, true);
+
+  const status = advanceNpcGame(adapter, started.token);
+  assert.equal(status.closed, true);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].winnerId, null);
+  assert.equal(results[0].loserId, null);
+  assert.equal(results[0].outcome, 'draw');
+  assert.equal(status.outcome, 'draw');
+  assert.equal(status.winnerId, null);
+  assert.equal(status.loserId, null);
+});
+
+test('NPC TTT emits no onResult on abort or timeout', () => {
+  const aborted = createTttHost();
+  const abortResults = [];
+  const abortAdapter = createNpcGameAdapter({
+    host: aborted.host,
+    onResult: result => abortResults.push(result)
+  });
+  const abortCtx = makeCtx();
+  const abortStart = abortAdapter.start({
+    game: 'tic-tac-toe',
+    actor: abortCtx.ctx.actor,
+    partner: abortCtx.ctx.target
+  });
+  const abortResult = abortAdapter.abort(abortStart.token, 'npc-game-aborted');
+  assert.equal(abortResult.ok, true);
+  abortAdapter.status(abortStart.token);
+  abortAdapter.finish(abortStart.token);
+  assert.equal(abortResults.length, 0, 'abort never reports a result');
+
+  const timedHost = createTttHost();
+  const timeoutResults = [];
+  const adapter = createNpcGameAdapter({
+    host: timedHost.host,
+    onResult: result => timeoutResults.push(result)
+  });
+  const actions = createSocialActions({ adapter });
+  const { ctx, events } = makeCtx({ params: { timeoutMs: 1000 } });
+
+  actions.startNpcGame(ctx);
+  ctx.elapsedMs = 1000;
+  const timedOut = actions.awaitNpcGame(ctx);
+  assert.equal(timedOut.done, true);
+  assert.equal(timedOut.reason, 'timeout');
+  assert.equal(events.filter(event => event.type === 'game.timeout').length, 1);
+  adapter.status(ctx.memory.npcGameToken);
+  adapter.finish(ctx.memory.npcGameToken);
+  assert.equal(timeoutResults.length, 0, 'timeout never reports a result');
+});
+
+test('awaitNpcGame game.end carries winner, loser, and outcome', () => {
+  const { host } = createTttHost({
+    grid: ['X', 'X', null, 'O', 'O', 'X', 'X', 'O', 'O']
+  });
+  const results = [];
+  const actions = createSocialActions({
+    host,
+    onResult: result => results.push(result)
+  });
+  const { ctx, events } = makeCtx({ params: { timeoutMs: 60000 } });
+
+  const started = actions.startNpcGame(ctx);
+  assert.equal(started.ok, true);
+
+  let ended = null;
+  for (let i = 0; i < 20; i++) {
+    ended = actions.awaitNpcGame(ctx);
+    if (ended.done) break;
+  }
+  assert.equal(ended.done, true);
+  assert.equal(ended.reason, 'win');
+  assert.equal(results.length, 1);
+  assert.equal(results[0].outcome, 'win');
+
+  const ends = events.filter(event => event.type === 'game.end');
+  assert.equal(ends.length, 1);
+  assert.equal(ends[0].detail.outcome, 'win');
+  assert.equal(ends[0].detail.winnerId, 'npc-a');
+  assert.equal(ends[0].detail.loserId, 'npc-b');
+  assert.equal(ends[0].detail.token, started.token);
+
+  actions.awaitNpcGame(ctx);
+  assert.equal(events.filter(event => event.type === 'game.end').length, 1);
+  assert.equal(results.length, 1);
 });
