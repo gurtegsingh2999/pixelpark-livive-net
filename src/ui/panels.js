@@ -1473,14 +1473,19 @@ export class PanelsUI {
     this.closeAllPanels();
     this.cardCharacter = character;
     const game = this.getGame();
-    game?.select(character.isPlayer ? 'player' : character.id);
+    game?.select(character.isRemote ? 'remote' : character.isPlayer ? 'player' : character.id);
 
     const isPlayer = character.isPlayer;
     const isCompanion = character.isCompanion;
     bindAnimatedAvatar($('npc-avatar'), character.recipe, 0);
     $('npc-avatar').alt = `${character.name}'s character`;
 
-    if (isPlayer) {
+    if (character.isRemote) {
+      $('npc-name').textContent = `${character.name} · friend`;
+      $('npc-vibe').textContent = 'Walking this park with you.';
+      $('npc-shuffle').hidden = true;
+      $('npc-remove').hidden = true;
+    } else if (isPlayer) {
       $('npc-name').textContent = `${character.name} · you`;
       $('npc-vibe').textContent = 'Mayor of the park, apparently.';
     } else if (isCompanion) {
@@ -1522,6 +1527,10 @@ export class PanelsUI {
       const panel = $(cfg.panelId);
       if (panel) panel.hidden = true;
     }
+    const together = $('together-panel');
+    if (together) together.hidden = true;
+    $('together-toggle')?.classList.remove('active-tab');
+    $('together-toggle')?.setAttribute('aria-expanded', 'false');
   }
 
   // --- Vertical Navigation ---

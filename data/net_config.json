@@ -1,0 +1,15 @@
+{
+  "maxPlayers": 2,
+  "maxMessageBytes": 8192,
+  "snapshotMaxBytes": 262144,
+  "chunkBytes": 7000,
+  "maxMessagesPerSec": 15,
+  "sayMaxLength": 140,
+  "nameMaxLength": 24,
+  "poseFlushMs": 100,
+  "pingMs": 2000,
+  "stunUrls": [
+    "stun:stun.l.google.com:19302",
+    "stun:stun.cloudflare.com:3478"
+  ]
+}

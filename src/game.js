@@ -328,6 +328,7 @@ export class Game {
       inventory: Array.isArray(input.inventory) ? input.inventory : [],
       equipped: Array.isArray(input.equipped) ? input.equipped : [],
       isCompanion: true,
+      ownerIsPlayer: Boolean(buddy?.isPlayer),
       x,
       y,
       fromX: x,
@@ -407,6 +408,7 @@ export class Game {
     this.terrain = terrain;
     this.worldSeed = worldSeed;
     this.scenery = scenery;
+    this.remotePlayer = null;
     this.player = player ? this.makeCharacter(player, true) : null;
     this.npcs = (npcs || []).map(npc => this.makeCharacter(npc, false));
 
@@ -436,6 +438,7 @@ export class Game {
     this.terrain = terrain;
     this.worldSeed = worldSeed;
     this.player = null;
+    this.remotePlayer = null;
     this.npcs = [];
     this.companions = [];
     this.selected = null;
@@ -507,12 +510,17 @@ export class Game {
       this.selected = this.player;
       return;
     }
+    if (id === 'remote') {
+      this.selected = this.remotePlayer;
+      return;
+    }
     this.selected = this.getNpc(id) || this.companions.find(c => c.id === id) || null;
   }
 
   allOtherCharacters(exclude = null) {
     const list = [];
     if (this.player && this.player !== exclude) list.push(this.player);
+    if (this.remotePlayer && this.remotePlayer !== exclude) list.push(this.remotePlayer);
     for (const npc of this.npcs) {
       if (npc !== exclude) list.push(npc);
     }
@@ -524,9 +532,18 @@ export class Game {
 
   tryPlayerStep(dx, dy) {
     if (!this.player || !this.interactive || this.paused) return false;
+    if (this.netCanStep && !this.netCanStep()) return false;
     const nx = this.player.x + dx;
     const ny = this.player.y + dy;
     this.player.direction = directionForStep(dx, dy);
+
+    if (this.remotePlayer && this.remotePlayer.x === nx && this.remotePlayer.y === ny) {
+      this.heldKeys = [];
+      this.player.path = [];
+      this.destination = null;
+      this.onPeerBump?.(this.remotePlayer);
+      return false;
+    }
 
     // Teleport ignores terrain, bumps, and board blocking; tryStep handles the
     // 3-tile landing search and the free-landing check.
@@ -705,7 +722,7 @@ export class Game {
         ? clamp(blinkMs / durationMs, 0.05, 1)
         : 0.6;
     }
-    return true;
+    return this.commitNetMove(character);
   }
 
   /**
@@ -754,7 +771,109 @@ export class Game {
     character.motionArriveAt = Number.isFinite(blinkMs) && durationMs > 0
       ? clamp(blinkMs / durationMs, 0.05, 1)
       : 0.6;
+    return this.commitNetMove(character);
+  }
+
+  /** Drop a rejected or reconciled step back onto a single tile. */
+  snapCharacter(character, x, y) {
+    if (!character) return;
+    const tileX = clamp(Math.round(Number(x) || 0), 0, WORLD_SIZE - 1);
+    const tileY = clamp(Math.round(Number(y) || 0), 0, WORLD_SIZE - 1);
+    character.x = tileX;
+    character.y = tileY;
+    character.fromX = tileX;
+    character.fromY = tileY;
+    character.toX = tileX;
+    character.toY = tileY;
+    character.moving = false;
+    character.elapsed = 0;
+    character.path = [];
+    character.motionStyle = null;
+    character.motionArriveAt = 1;
+    this.destination = null;
+  }
+
+  /** Apply a remote step onto the fields `interpolated` already reads. */
+  applyNetMotion(character, motion) {
+    if (!character || !motion) return;
+    character.direction = Number.isFinite(motion.direction) ? motion.direction : character.direction;
+    character.duration = motion.duration;
+    character.motionStyle = motion.motion || null;
+    character.motionArriveAt = Number.isFinite(motion.arrive) ? motion.arrive : 1;
+    character.path = [];
+    if (motion.moving) {
+      character.fromX = motion.x;
+      character.fromY = motion.y;
+      character.x = motion.x;
+      character.y = motion.y;
+      character.toX = motion.toX;
+      character.toY = motion.toY;
+      character.elapsed = motion.elapsed;
+      character.moving = true;
+      return;
+    }
+    this.snapCharacter(character, motion.toX, motion.toY);
+  }
+
+  commitNetMove(character) {
+    if (typeof this.onNetMove !== 'function') return true;
+    const verdict = this.onNetMove(character);
+    if (verdict && verdict.ok === false) {
+      const x = Number.isFinite(verdict.x) ? verdict.x : character.fromX;
+      const y = Number.isFinite(verdict.y) ? verdict.y : character.fromY;
+      this.snapCharacter(character, x, y);
+      return false;
+    }
     return true;
+  }
+
+  /**
+   * The host tab simulates neighbours and its own buddies. A guest only
+   * simulates their own steps and their own buddies. Everyone else is a pose.
+   */
+  simulates(character) {
+    if (!this.netRole || !character) return true;
+    if (character === this.remotePlayer || character.isRemote) return false;
+    if (character.isCompanion) {
+      return character.buddyId === 'player' || character.buddyId === this.player?.id;
+    }
+    if (character.isPlayer) return character === this.player;
+    return this.netRole !== 'guest';
+  }
+
+  advanceNetMotion(dt) {
+    const actors = [];
+    if (this.remotePlayer) actors.push(this.remotePlayer);
+    for (const npc of this.npcs || []) {
+      if (!this.simulates(npc)) actors.push(npc);
+    }
+    for (const comp of this.companions || []) {
+      if (!this.simulates(comp)) actors.push(comp);
+    }
+    for (const character of actors) {
+      if (!character.moving) continue;
+      character.elapsed += dt;
+      if (character.elapsed < character.duration) continue;
+      character.x = character.toX;
+      character.y = character.toY;
+      character.moving = false;
+      character.elapsed = 0;
+      this.onActorArrived?.(character);
+    }
+  }
+
+  attachRemote(input = {}) {
+    this.remotePlayer = this.makeCharacter({ ...input, id: 'remote' }, true);
+    this.remotePlayer.isRemote = true;
+    return this.remotePlayer;
+  }
+
+  clearRemotePeer() {
+    const remoteId = this.remotePlayer?.id;
+    this.remotePlayer = null;
+    if (remoteId) {
+      this.companions = (this.companions || []).filter(comp => comp.buddyId !== remoteId && !comp.remoteOwned);
+    }
   }
 
   recordEffectTrailPoint(character, point, fx) {
@@ -787,6 +906,7 @@ export class Game {
         player.y = player.toY;
         player.moving = false;
         player.elapsed = 0;
+        this.onActorArrived?.(player);
       }
       return;
     }
@@ -817,6 +937,7 @@ export class Game {
   }
 
   updateNpc(npc, dt) {
+    if (!this.simulates(npc)) return;
     if (npc.moving) {
       npc.elapsed += dt;
       if (npc.elapsed >= npc.duration) {
@@ -825,6 +946,7 @@ export class Game {
         npc.moving = false;
         npc.elapsed = 0;
         npc.wait = 0.5 + Math.random() * 1.6;
+        this.onActorArrived?.(npc);
       }
       return;
     }
@@ -978,6 +1100,7 @@ export class Game {
   }
 
   updateCompanion(comp, dt) {
+    if (!this.simulates(comp)) return;
     if (comp.cheerTimer > 0) {
       comp.cheerTimer = Math.max(0, comp.cheerTimer - dt);
       comp.cheerElapsed = (comp.cheerElapsed || 0) + dt;
@@ -1005,6 +1128,7 @@ export class Game {
         comp.y = comp.toY;
         comp.moving = false;
         comp.elapsed = 0;
+        this.onActorArrived?.(comp);
       }
       return;
     }
@@ -1129,7 +1253,7 @@ export class Game {
       this.updatePlayer(dt);
       for (const npc of this.npcs) this.updateNpc(npc, dt);
       for (const comp of this.companions) this.updateCompanion(comp, dt);
-      if (this.behaviorRuntime && typeof this.behaviorRuntime.update === 'function') {
+      if (this.netRole !== 'guest' && this.behaviorRuntime && typeof this.behaviorRuntime.update === 'function') {
         this.behaviorRuntime.update(dt * 1000);
       }
       if (this.miniGameHost) {
@@ -1140,6 +1264,7 @@ export class Game {
         for (const game of this.miniGames) game.update?.(dt);
       }
     }
+    this.advanceNetMotion(dt);
     this.updateCamera(dt);
     if (this.destination && this.time > this.destination.until) this.destination = null;
   }
@@ -1164,6 +1289,7 @@ export class Game {
   characterAtScreen(sx, sy) {
     const characters = [...this.npcs, ...this.companions];
     if (this.player) characters.push(this.player);
+    if (this.remotePlayer) characters.push(this.remotePlayer);
     characters.sort((a, b) => this.interpolated(b).y - this.interpolated(a).y);
     for (const character of characters) {
       const position = this.interpolated(character);
@@ -1215,6 +1341,10 @@ export class Game {
     for (const npc of this.npcs) {
       blocked.add(`${npc.x},${npc.y}`);
       if (npc.moving) blocked.add(`${npc.toX},${npc.toY}`);
+    }
+    if (this.remotePlayer) {
+      blocked.add(`${this.remotePlayer.x},${this.remotePlayer.y}`);
+      if (this.remotePlayer.moving) blocked.add(`${this.remotePlayer.toX},${this.remotePlayer.toY}`);
     }
     const path = findPath(this.terrain, { x: this.player.x, y: this.player.y }, { x: tileX, y: tileY }, blocked);
     if (path.length) {

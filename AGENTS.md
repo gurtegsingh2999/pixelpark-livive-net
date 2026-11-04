@@ -42,6 +42,8 @@ dev tooling. Do not commit `node_modules/` or `assets/tts/kokoro/`.
 | `data/entities.json` | NPC names, player names, and vibes/flavour text |
 | `data/cubeworld_pets.json` | Pre-rendered offline sprite sheets for Cube World animal pets and creatures |
 | `data/voices.json` | Voice pool, spoken dialogue keys, text cleanup, voice settings defaults, Web Speech hints |
+| `data/net_config.json` | Two-player caps, message limits, and STUN URLs used only while play-together is open |
+| `src/net/` | Room rules, paste-a-code WebRTC link, and the host-tab session |
 | `src/main.js` | App state, dialogue triggers, save loop, and event wiring |
 | `src/game.js` | Movement physics, tile collision, camera, character registry, wander AI |
 | `src/renderer.js` | Canvas WorldRenderer, viewport math, layer sorting, and minimap |
@@ -91,6 +93,8 @@ extractable.
   time (`npm run tts:model` does the same locally), and the game loads it only when voices
   are turned on. Build every asset URL relative to the file using it (`import.meta.url` or
   the document), never `/assets/...`; staging lives under a subpath.
+  Solo play still makes no network calls. Play-together opens a direct browser link and
+  a STUN lookup so two home networks can meet. The live room stays in the host tab.
 - **Characters are recipes, not images.** Persist `{ seed, look }`; render the SVG locally.
   Do not store uploaded avatars in saves.
 - **Tile collision is strict.** A character occupies its current tile and reserves its
