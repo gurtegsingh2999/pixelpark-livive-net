@@ -46,6 +46,7 @@ import { loadSettings, saveSettings } from './tts/settings.js';
 import { describePill, voicesMenu } from './tts/select.js';
 import { createWebSpeechEngine } from './tts/engines/webspeech.js';
 import { createKokoroEngine, createAudioOutput } from './tts/engines/kokoro.js';
+import { createNetBridge } from './net/bridge.js';
 
 const MAX_NPCS = engineConfig.crowd.maxNpcs;
 const DEFAULT_CROWD = engineConfig.crowd.defaultCount;
@@ -70,6 +71,7 @@ let npcWatchPrompt = null;
 let delegated = { host: false, runtime: false, bubbles: false };
 let voices = null;
 let voicesBeatOpen = false;
+let netBridge = null;
 
 const VOICES_COPY = dialogueData.voicesMenu;
 
@@ -89,6 +91,7 @@ function msToSeconds(ms) {
 
 function resolveCharacter(id) {
   if (!game || id == null) return null;
+  if (id === 'remote' || id === game.remotePlayer?.id) return game.remotePlayer;
   if (id === 'player' || id === game.player?.id) return game.player;
   return game.getNpc?.(id) || game.companions?.find(companion => companion.id === id) || null;
 }
@@ -119,6 +122,8 @@ function onFriendshipChanged(npcId, isFriend) {
 }
 
 function onDialogueEnded() {
+  const npcId = game?.dialogueNpc?.id;
+  netBridge?.unlock(npcId);
   voicesBeatOpen = false;
   voices?.cancel();
   game?.select(null);
@@ -143,7 +148,7 @@ function tableGamesFor(opponent) {
     }));
 }
 
-function openDialogue(npc) {
+function beginDialogue(npc) {
   if (!npc) return;
   dismissNpcWatchPrompt();
   panels?.closeAllPanels();
@@ -151,6 +156,22 @@ function openDialogue(npc) {
   behaviorRuntime?.setDialogue(true);
   const isFriend = friends.has(npc.id);
   dialogue.open(npc, isFriend, { games: tableGamesFor(npc) });
+}
+
+function openDialogue(npc) {
+  if (!npc) return;
+  if (npc.isRemote) {
+    game.resumeFromDialogue();
+    return;
+  }
+  const lock = netBridge?.requestLock?.(npc.id);
+  if (lock?.pending) return;
+  if (lock && lock.ok === false) {
+    game.resumeFromDialogue();
+    showToast('they are busy chatting');
+    return;
+  }
+  beginDialogue(npc);
 }
 
 function refreshMiniGameFlags() {
@@ -189,6 +210,10 @@ function packUpGame(gameId = null) {
 
 function onPlayGame(gameId, opponent) {
   if (!host || !game?.player) return;
+  if (netBridge?.inRoom()) {
+    showToast('leave the room before starting a game');
+    return;
+  }
   const meta = host.getMeta(gameId);
   if (!meta) {
     showToast('That game is not unpacked yet.');
@@ -248,6 +273,10 @@ function facingTile(character, distance = 3) {
 
 function onThrowBall({ color } = {}) {
   if (!host || !game?.player) return;
+  if (netBridge?.inRoom()) {
+    showToast('leave the room before starting a game');
+    return;
+  }
   if (host.isOpen()) {
     showToast(`${host.session.meta.title || 'A game'} is already open. Pack it up first.`);
     return;
@@ -1291,7 +1320,7 @@ function behaviorSaveState() {
 }
 
 function saveNow() {
-  if (!entered) return;
+  if (!entered || netBridge?.shouldSave?.() === false) return;
   const state = serializeSave(game, draft, friends, behaviorSaveState());
   saveState(state);
 }
@@ -1482,8 +1511,16 @@ function promptNpcGameWatch(detail = {}, session = null) {
   }, 1000);
 }
 
+function parkIsShared() {
+  return Boolean(netBridge?.active());
+}
+
 function addNeighbour() {
   if (!game.player) return;
+  if (parkIsShared()) {
+    showToast('leave the room before changing the crowd');
+    return;
+  }
   if (game.npcs.length >= MAX_NPCS) {
     showToast('The park is full. Forty neighbours is plenty.');
     return;
@@ -1508,6 +1545,10 @@ function toggleWander() {
 function rerollCardCharacter() {
   const cardCharacter = panels?.cardCharacter;
   if (!cardCharacter || cardCharacter.isPlayer || cardCharacter.isCompanion) return;
+  if (parkIsShared()) {
+    showToast('leave the room before changing looks');
+    return;
+  }
   const recipe = createRecipe();
   cardCharacter.recipe = recipe;
   cardCharacter.vibe = pickVibe();
@@ -1521,6 +1562,10 @@ function rerollCardCharacter() {
 function removeCardCharacter() {
   const cardCharacter = panels?.cardCharacter;
   if (!cardCharacter || cardCharacter.isPlayer || cardCharacter.isCompanion) return;
+  if (parkIsShared()) {
+    showToast('leave the room before changing the crowd');
+    return;
+  }
   const name = cardCharacter.name;
   if (host?.isOpen() && host.session?.participantIds?.has(cardCharacter.id)) {
     packUpGame();
@@ -1535,6 +1580,18 @@ function removeCardCharacter() {
 }
 
 function bindEvents() {
+  netBridge = createNetBridge({
+    getGame: () => game,
+    getBubbles: () => bubbles,
+    showToast,
+    isMiniGameOpen: () => Boolean(host?.isOpen()),
+    captureSave: () => serializeSave(game, draft, friends, behaviorSaveState()),
+    applyState,
+    closeMenu: () => panels?.closeMenu(),
+    beginDialogue
+  });
+  netBridge.bind();
+
   $('wander-toggle')?.addEventListener('click', toggleWander);
   $('add-npc')?.addEventListener('click', addNeighbour);
   $('new-park')?.addEventListener('click', () => {
@@ -1679,6 +1736,7 @@ function boot() {
     onAddNeighbour: addNeighbour,
     onNewPark: () => {
       if (!window.confirm('Start a new park? Your current park and neighbours will be replaced.')) return;
+      netBridge?.leave({ notify: true });
       panels?.closeMenu();
       if (host?.isOpen()) packUpGame();
       bubbles?.clear();
@@ -1737,6 +1795,7 @@ window.playPark = {
   get bubbles() { return bubbles; },
   get voices() { return voices; },
   get behaviorRuntime() { return behaviorRuntime; },
+  get net() { return netBridge; },
   get npcGameAdapter() { return npcGameAdapter; },
   get fetchGame() { return host?.activeGameId === 'fetch' ? host.session?.game?.legacy || null : null; },
   get tttGame() { return host?.activeGameId === 'tic-tac-toe' ? host.session?.game?.legacy || null : null; },

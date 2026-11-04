@@ -19,10 +19,11 @@
         <button id="stats-toggle" class="pill" type="button" aria-expanded="false" aria-controls="stats-panel" aria-label="Stats" title="Stats"><span class="icon">🏆</span><span class="label">Stats</span></button>
         <button id="debug-toggle" class="pill" type="button" aria-expanded="false" aria-controls="debug-panel" aria-label="Debug" title="Debug"><span class="icon">⚙️</span><span class="label">Debug</span></button>
         <button id="voices-toggle" class="pill voices-pill" type="button" aria-pressed="false" aria-label="voices: off" title="voices: off (m to mute)"><span class="icon">🔇</span><span class="label">off</span></button>
+        <button id="together-toggle" class="pill" type="button" aria-expanded="false" aria-controls="together-panel" aria-label="Play together" title="Play together"><span class="icon">👋</span><span class="label">Together</span></button>
       </div>
     </header>
 
-    <p id="hint">WASD or arrow keys to walk · click the ground to move · bump into a neighbour to talk</p>
+    <p id="hint">WASD or arrow keys to walk · click the ground to move · bump into a neighbour to talk · together to share the park</p>
 
     <aside id="npc-card" class="npc-card" hidden aria-live="polite">
       <button id="npc-close" class="icon-button close" type="button" aria-label="Close character card">×</button>
@@ -103,6 +104,27 @@
           </div>
         </div>
       </div>
+    </aside>
+
+    <aside id="together-panel" class="friends-panel together-panel" hidden aria-label="Play together">
+      <div class="panel-heading">
+        <strong>Play together</strong>
+        <button id="together-close" class="icon-button" type="button" aria-label="Close play together">×</button>
+      </div>
+      <p id="together-status" class="panel-note">walk the same park with one friend</p>
+      <div class="together-actions">
+        <button id="together-host" class="pill" type="button">host this park</button>
+        <button id="together-copy" class="pill" type="button">copy code</button>
+        <button id="together-use" class="pill" type="button">use code</button>
+      </div>
+      <label class="together-label" for="together-code">code</label>
+      <textarea id="together-code" rows="4" spellcheck="false" aria-label="Room code"></textarea>
+      <div id="together-say-row" hidden>
+        <label class="together-label" for="together-say">say</label>
+        <input id="together-say" type="text" maxlength="140" placeholder="say something" autocomplete="off">
+        <button id="together-say-send" class="pill" type="button">say</button>
+      </div>
+      <button id="together-leave" class="pill danger" type="button" hidden>leave</button>
     </aside>
 
     <section id="dialogue" class="dialogue" hidden role="dialog" aria-modal="true" aria-labelledby="dialogue-name">

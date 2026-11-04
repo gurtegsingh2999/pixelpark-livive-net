@@ -223,7 +223,7 @@ export function serializeSave(game, draft, friends, behaviorState = null) {
       stabledCompanions: serializeReserveCompanions(npc.stabledCompanions),
       ...(typeof npc.voice === 'string' ? { voice: npc.voice } : {})
     })),
-    companions: (game.companions || []).map(comp => ({
+    companions: (game.companions || []).filter(comp => !comp?.remoteOwned).map(comp => ({
       id: comp.id,
       name: comp.name,
       buddyId: comp.buddyId,

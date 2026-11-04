@@ -242,6 +242,9 @@ export class WorldRenderer {
     // Render characters and scenery sorted by Y depth
     const renderables = [];
     if (game.player) renderables.push({ type: 'char', y: game.interpolated(game.player).y, entity: game.player });
+    if (game.remotePlayer) {
+      renderables.push({ type: 'char', y: game.interpolated(game.remotePlayer).y, entity: game.remotePlayer });
+    }
     for (const npc of game.npcs) renderables.push({ type: 'char', y: game.interpolated(npc).y, entity: npc });
     for (const comp of game.companions) renderables.push({ type: 'char', y: game.interpolated(comp).y, entity: comp });
 
@@ -743,6 +746,17 @@ export class WorldRenderer {
       mctx.beginPath();
       mctx.arc((position.x + 0.5) * (size / WORLD_SIZE), (position.y + 0.5) * (size / WORLD_SIZE), Math.max(3, size / 75), 0, Math.PI * 2);
       mctx.fillStyle = '#e5f4a5';
+      mctx.fill();
+      mctx.strokeStyle = 'rgba(10, 17, 12, 0.9)';
+      mctx.lineWidth = Math.max(1.5, size / 180);
+      mctx.stroke();
+    }
+
+    if (game.remotePlayer) {
+      const position = game.interpolated(game.remotePlayer);
+      mctx.beginPath();
+      mctx.arc((position.x + 0.5) * (size / WORLD_SIZE), (position.y + 0.5) * (size / WORLD_SIZE), Math.max(3, size / 75), 0, Math.PI * 2);
+      mctx.fillStyle = '#b6e37c';
       mctx.fill();
       mctx.strokeStyle = 'rgba(10, 17, 12, 0.9)';
       mctx.lineWidth = Math.max(1.5, size / 180);

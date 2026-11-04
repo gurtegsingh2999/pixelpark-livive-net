@@ -20,11 +20,15 @@ export function reservationAtTile(characters, x, y, exclude = null) {
  * - NPC companions ARE blocked by NPCs, the player, and other NPC companions.
  * - Players and NPCs are blocked by other NPCs.
  */
+function isPlayerCompanion(entity) {
+  return Boolean(entity?.isCompanion && (entity.buddyId === 'player' || entity.ownerIsPlayer));
+}
+
 export function canCollide(mover, obstacle) {
   if (!mover || !obstacle || mover === obstacle) return false;
 
-  // Rule 4: The primary player's companions all have "no collision" set for all cases
-  if ((mover.isCompanion && mover.buddyId === 'player') || (obstacle.isCompanion && obstacle.buddyId === 'player')) {
+  // A player's companions, including a remote friend's, never take a tile.
+  if (isPlayerCompanion(mover) || isPlayerCompanion(obstacle)) {
     return false;
   }
 

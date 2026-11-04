@@ -425,6 +425,48 @@ body.wizard-open canvas#world {
   line-height: 1.4;
 }
 
+.together-panel {
+  overflow: auto;
+  max-height: min(70vh, 560px);
+}
+
+.together-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.together-label {
+  display: block;
+  margin: 6px 0 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.together-panel textarea,
+.together-panel input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(10, 17, 12, 0.45);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.together-panel textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.together-panel #together-leave {
+  margin-top: 4px;
+}
+
 .friend-list {
   display: grid;
   gap: 6px;
